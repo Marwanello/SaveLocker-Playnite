@@ -1,0 +1,17 @@
+# Build output
+bin/
+obj/
+*.pext
+
+# Toolbox / packing scratch
+dist/
+.testenv/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Playnite portable test instance (downloaded, not committed)
+playnite-portable/
