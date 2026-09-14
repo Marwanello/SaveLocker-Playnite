@@ -15,3 +15,6 @@ dist/
 
 # Playnite portable test instance (downloaded, not committed)
 playnite-portable/
+
+# Local Claude Code session settings
+.claude/settings.local.json
