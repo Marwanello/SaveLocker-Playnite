@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <AssemblyName>SaveLocker.Playnite</AssemblyName>
+    <RootNamespace>SaveLocker.Playnite</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <!--
+    Playnite ships net462 without Visual Studio's Framework targeting pack installed on every dev
+    box; this NuGet package supplies the reference assemblies `dotnet build` needs so the project
+    builds the same way on any machine, VS or not (docs/Gotchas.md).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System.Net.Http" />
+    <!-- JavaScriptSerializer — part of the Framework GAC, not a NuGet package, so the plugin ships
+         with zero third-party dependencies to pack alongside Playnite.SDK.dll. docs/Gotchas.md. -->
+    <Reference Include="System.Web.Extensions" />
+    <!-- Referenced from the real installed Playnite, not NuGet — Playnite does not publish this
+         package, and the assembly must match exactly what loads the plugin at runtime anyway.
+         Private=false: Playnite provides this DLL itself, so it must not be copied into the
+         extension's own output. docs/Gotchas.md. -->
+    <Reference Include="Playnite.SDK">
+      <HintPath>$(LocalAppData)\Playnite\Playnite.SDK.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\extension.yaml">
+      <Link>extension.yaml</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
