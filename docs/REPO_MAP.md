@@ -33,6 +33,9 @@ SaveLocker-Playnite/
 │                                   #   docs/Gotchas.md).
 ├── dist/SaveLocker.pext            # Hand-packed (Toolbox.exe is broken here — docs/Gotchas.md).
 │                                   #   Gitignored; rebuild with docs/Build and Run.md's pack step.
+├── scripts/Install-ToPortable.ps1  # Build + copy straight into <PlaynitePath>\Extensions\SaveLocker
+│                                   #   for any Playnite install root, portable or real — skips the
+│                                   #   .pext pack/install round trip. docs/Build and Run.md.
 ├── docs/                           # This small vault. CONTEXT.md + REPO_MAP.md + Gotchas.md +
 │                                   #   Build and Run.md + logs/ — see AGENTS.md for when to read each.
 ├── .github/workflows/              # Empty for now — no CI here yet (nothing to build headlessly

@@ -21,7 +21,24 @@ Compress-Archive -Path "$src\extension.yaml", "$src\SaveLocker.Playnite.dll" -De
 Rename-Item dist\SaveLocker.zip SaveLocker.pext -Force
 ```
 
-## Install — three ways
+## Install — fast path: `scripts/Install-ToPortable.ps1`
+
+Builds and copies `extension.yaml` + the DLL straight into `<PlaynitePath>\Extensions\SaveLocker`
+in one step — no `.pext` pack, no double-click install. Works against any Playnite install root,
+portable or real; Playnite loads an unpacked extension folder exactly the same as a packed one.
+
+```powershell
+.\scripts\Install-ToPortable.ps1 -PlaynitePath C:\SaveLockerTest\Playnite
+```
+
+Close Playnite first if it's already running from that path — it locks the DLL while loaded, so a
+reinstall over a live instance fails with a clear "close Playnite first" error. `-SkipBuild` reuses
+the last build output; `-Configuration Debug` installs a Debug build. This is the fastest edit-build-
+reinstall loop for the portable test instance below; the manual three ways in the next section are
+what it's doing internally, spelled out for when you want the `.pext` itself (e.g. to hand someone
+a file) or don't want to touch a script.
+
+## Install — three manual ways
 
 ### A. Straight into your real, everyday Playnite (fastest, touches your real library)
 
@@ -80,8 +97,14 @@ Run it: `$portable\Playnite.DesktopApp.exe`. Confirm it's actually portable —
 Settings → About should show a portable-mode indicator, and a new `config.json`/`library\` should
 appear directly under `$portable`, not under `%AppData%\Playnite`.
 
-Install the plugin into it (method A above, but into `$portable\Extensions\SaveLocker\` instead of
-`%AppData%\Playnite\Extensions\SaveLocker\`).
+Install the plugin into it:
+
+```powershell
+.\scripts\Install-ToPortable.ps1 -PlaynitePath $portable
+```
+
+(equivalent to method A above, but into `$portable\Extensions\SaveLocker\` instead of
+`%AppData%\Playnite\Extensions\SaveLocker\`, and it builds for you first).
 
 ### 2. Start a throwaway test server + a test Windows agent
 
