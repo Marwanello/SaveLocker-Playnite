@@ -25,10 +25,12 @@ menu entry point is Phase 13/Group 5, not built here.
 **Builds clean against the real installed Playnite SDK on this box** (`dotnet build` — 0 warnings, 0
 errors — and packed to a real `dist\SaveLocker.pext`). **Not yet hardware-verified**: nothing above has
 actually been loaded into a running Playnite, matched a real unmatched game, fired the nudge
-notification, or walked through enrolling/linking against a real test agent. `docs/Build and Run.md`'s
-manual walkthrough doesn't yet have a Phase-12-specific step — whoever picks this up next should add
-one (seed an untracked, unmatched game in the portable Playnite + test agent setup, launch it, confirm
-the nudge fires once and not again on a second launch, click it, and walk all five tiers).
+notification, or walked through enrolling/linking against a real test agent. `docs/Build and Run.md`
+now has a full Phase 12 manual-verification section (steps 7–14, right after the existing Phase 8–11
+walkthrough) — nudge-fires-once, nudge-suppressed-while-agent-down, all four tiers, cancel-stays-
+cancelled, and the alias-backfill check that confirms a linked game auto-matches on its next launch.
+That checklist is written but **not yet run** — whoever picks this up next should actually run it
+against a real portable Playnite + test agent.
 
 One deliberate deviation from `plan.md`'s own suggestion, worth knowing: the manual-folder-browse tier
 uses Playnite's native `IDialogsFactory.SelectFolder()` instead of embedding the agent-ui Add Games
@@ -101,11 +103,8 @@ specifically — the rest of the 6-step walkthrough is already confirmed.
 
 ## Next action
 
-1. Hardware-verify Group 4: set up (or reuse) the portable Playnite + test agent from `docs/Build and
-   Run.md`, seed an untracked game with no automatic match, launch it once to confirm the nudge fires
-   (and doesn't fire again on a second launch), then walk all five tiers of the popup against a real
-   test agent — automatic lookup resolving, manifest search finding a renamed title, manual folder
-   browse, and picking an existing tracked game.
+1. Hardware-verify Group 4 by actually running `docs/Build and Run.md`'s new "Phase 12 manual
+   verification" section (steps 7–14) against a real portable Playnite + test agent.
 2. Re-run `docs/Build and Run.md`'s steps 3 (lease held elsewhere) and 7 (Fullscreen mode) from the
    Group 3 write-up below if they still haven't been reconfirmed since those fixes.
 3. Once Group 4 is hardware-verified: update `implementation-grouping.md`'s Group 4 row in the main

@@ -287,6 +287,140 @@ With the portable Playnite + test agent from above running:
    important thing to confirm before trusting this on a real library — SaveLocker must never be why
    a game won't start.
 
+## Phase 12 manual verification: "Link to SaveLocker"
+
+Extends the exact same portable Playnite + test agent + test server setup from steps 1–4 above —
+nothing new to start, just a handful of extra disposable Custom Game entries and two scratch
+folders, all still confined to `C:\SaveLockerTest\`. Playnite still has no CLI to add library
+entries, so — same one-time manual step as "Conflict Game" above — add each of the following via
+**Add game → Custom game**, reusing the same fake exe so every entry is genuinely launchable and
+closable:
+
+```
+Executable: <main SaveLocker repo>\src\Agent\bin\Debug\net10.0-windows\SaveLocker.Agent.exe
+Arguments:  fake-game
+```
+
+### 7. Set up the test entries
+
+| Playnite entry name | Purpose | Must NOT match anything, because… |
+|---|---|---|
+| `Unmatched Test Game` | Tier-4 nudge, then falls through to Tier 3/4 | Not a real title |
+| *(a real, already-installed, never-tracked-by-SaveLocker game you've actually played before)* | Tier 2 automatic resolve | Deliberately not already tracked here |
+| *(the same real game, added a SECOND time under a nickname — e.g. "Civ 6" for "Sid Meier's Civilization VI")* | Tier 3 manifest search | The nickname must differ from the manifest's canonical spelling |
+| `Totally Fake Game XYZ` | Tier 4 manual folder browse | Guaranteed absent from the ~53,000-name manifest |
+
+For the Tier 2/3 row, pick something small you're comfortable letting SaveLocker actually track for
+real — its real save folder gets read, and once enrolled, uploaded on the next sync. Same spirit as
+step 4's "small and disposable-feeling" pick. It needs to satisfy three things: (a) not already
+tracked here, (b) already played at least once, so its real save folder exists on disk, (c) a name
+Ludusavi's manifest recognizes (most well-known titles are). **If you'd rather not risk any real
+game's save data, skip the Tier 2/3 row and its nickname twin — steps 8, 9, 12, and 13 below don't
+need them at all.**
+
+Also create two disposable scratch folders for the manual-browse step:
+
+```powershell
+New-Item -ItemType Directory -Force C:\SaveLockerTest\manual-folder-test | Out-Null
+Set-Content C:\SaveLockerTest\manual-folder-test\savefile.txt "test"
+```
+
+### 8. The nudge fires once, and only once
+
+Launch **Unmatched Test Game**. Expect:
+- The game launches immediately — the nudge is never blocking.
+- A Playnite notification appears: *"SaveLocker couldn't automatically match 'Unmatched Test Game'
+  — click to link it and sync this game."*
+
+Close the fake exe's window, then launch **Unmatched Test Game** a second time. Expect **no second
+notification**. Confirm directly: `NudgeState` writes one Playnite game-id (a GUID) per line to
+
+```
+C:\SaveLockerTest\Playnite\ExtensionsData\4d7017e5-87c0-4011-92c4-83f5dde2ada2\shown-link-nudges.txt
+```
+
+(the portable install's `ExtensionsData\<PluginId>` — `4d7017e5-87c0-4011-92c4-83f5dde2ada2` is
+`SaveLockerPlugin.PluginId`, see `docs/REPO_MAP.md`) — it should now contain exactly one line for
+this game.
+
+### 9. The nudge is suppressed while the agent is unreachable
+
+Stop the test agent (Ctrl+C in its terminal). Add one more throwaway entry, **Second Unmatched
+Game** (same fake exe), and launch it. Expect: launches immediately, **no notification at all** —
+not "already shown," genuinely never offered (its id should be absent from
+`shown-link-nudges.txt`). Restart the test agent, launch **Second Unmatched Game** again. Expect:
+**now** the nudge appears — this is `SaveLockerPlugin.FindMatch`'s `agentReachable` distinction
+doing its job (an unreachable agent must never look identical to "no match" for nudging purposes,
+or it would fire on literally every unmatched launch while the agent happens to be down).
+
+### 10. Tier 2 — automatic resolve and enroll
+
+Launch the Tier-2 test entry (the real, never-tracked game from step 7) and click its notification.
+Expect the popup to open on a brief loading screen ("Looking for a match…" /
+"Checking SaveLocker's game database…"), then land directly on:
+
+> Track "**\<your title\>**" as **\<same or manifest-normalized title\>**?
+> Save found at: *\<a real path under this machine's profile\>*
+
+Click **Enroll**. Expect a Playnite notification *"SaveLocker: now tracking '\<title\>'."* and the
+popup closes. Confirm the game is now tracked: `SaveLocker.Agent.exe list` (run with this test
+agent's `$env:SAVELOCKER_STATE_ROOT`/`--config` from its own terminal) should list it.
+
+**Alias-backfill check** (this is the fix that makes the popup's result actually stick — without
+it, tier 3's name/Alias matching would never recognize this game again): launch the **same**
+Playnite entry a second time. Expect **no popup, no nudge** — it should now auto-match silently,
+the same way an already-well-matched game always has.
+
+### 11. Tier 3 — manual manifest search
+
+Launch the nickname entry (e.g. "Civ 6"). Expect the popup to land on the manifest-search screen:
+*"SaveLocker couldn't automatically find 'Civ 6' — search its game database by name,"* search box
+pre-filled with `Civ 6`. Clear it, type a distinctive fragment of the real title (e.g.
+`civilization`), click **Search**. Expect a scrollable result list including the real manifest
+entry (e.g. "Sid Meier's Civilization VI"). Double-click it. Expect either the confirm-enroll
+screen (likely, since step 7 asked for an already-played game) or the honest "SaveLocker knows …
+but hasn't found a save folder" screen if its save data doesn't actually exist yet. Either way this
+confirms the search → re-lookup round trip. If you reach confirm-enroll, click **Enroll** and
+re-check the alias-backfill behavior from step 10 — the tracked game's real name is the manifest's
+spelling, not "Civ 6"; the backfilled `Alias` is what lets "Civ 6" match on the next launch.
+
+### 12. Tier 4 — manual folder browse, and a clean refusal
+
+Launch **Totally Fake Game XYZ**. Expect the manifest-search screen with **zero results** for any
+query. Click **Browse for the folder myself** — Playnite's own native folder-picker should open
+(not a web page, not a WebView2 popup — confirms the deliberate deviation from `plan.md`'s own
+suggestion, see `docs/CONTEXT.md`). Navigate to `C:\SaveLockerTest\manual-folder-test` and select
+it. Expect a brief "Checking that folder…" screen, then the confirm-enroll screen showing that
+exact path. Click **Enroll**, expect the same success notification as step 10.
+
+**Refusal check** (`plan.md`'s "Link to SaveLocker" problem 4 — the popup must surface *why* a
+folder was refused, not just silently fail): repeat with one more throwaway Custom Game entry, but
+this time browse to `C:\` (a drive root) instead. Expect a plain-English refusal on the error
+screen (something like *"Can't use that folder: …"*) — never a raw JSON blob or an unhandled
+exception — with a working **Try again** button that reopens the folder picker.
+
+### 13. Pick an existing tracked game (available from every screen)
+
+Re-arm a nudge you've already used (delete its line from `shown-link-nudges.txt`, or just add one
+more fresh throwaway Custom Game entry) and open its popup. Click **Pick an existing tracked game
+instead**. Expect a filterable list of every currently-tracked game (from steps 4, 10, 11, 12 —
+whichever you ran). Type part of the step-4 baseline game's name into the filter box, confirm the
+list narrows, double-click it. Expect a Playnite notification *"SaveLocker: linked '\<Playnite
+title\>' to '\<tracked name\>'."* and the popup closes.
+
+### 14. Cancel is always safe, and stays cancelled
+
+Reopen any popup screen and click **Cancel** (or the window's own close button). Expect: the
+window closes, nothing is tracked, linked, or changed on the server — and, for that same game, the
+nudge does **not** reappear on a later launch. That second part is a deliberate tradeoff already
+called out in `docs/CONTEXT.md`, not a bug: the nudge is marked shown the moment it fires,
+regardless of what the player does with it, so a cancelled or errored-out attempt doesn't get a
+second chance until Phase 13's right-click menu entry exists. Confirm it matches this expectation
+rather than treating it as a defect.
+
+No separate teardown for any of this — the Cleanup step below already deletes everything Phase 12's
+testing touched, since it never left `C:\SaveLockerTest\`.
+
 ## Cleanup
 
 Stop both agent processes and the test server (Ctrl+C in each terminal), then delete
