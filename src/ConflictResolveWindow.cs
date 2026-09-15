@@ -45,8 +45,10 @@ namespace SaveLocker.Playnite
         private Guid? selectedVersionId;
         private Border cloudPanel;
         private Border devicePanel;
+        private Button cancelButton;
         private Button resolveButton;
         private TextBlock resolveButtonLabel;
+        private bool resolving;
 
         public ConflictResolveWindow(
             Window window, LocalApiClient client, string gameName, Guid conflictId,
@@ -101,8 +103,13 @@ namespace SaveLocker.Playnite
             root.Children.Add(panels);
 
             var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-            var cancelButton = new Button { Content = MakeLabel("Cancel"), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
-            cancelButton.Click += (s, e) => { window.DialogResult = false; window.Close(); };
+            cancelButton = new Button { Content = MakeLabel("Cancel"), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
+            // Guarded by `resolving`: a resolve call already in flight must finish (or fail) before
+            // the window can close, otherwise the continuation below runs against a closed window —
+            // Window.DialogResult throws once the window is gone, and the resulting catch block's
+            // MessageBox.Show(window, ...) throws a second time from the same closed owner, unhandled
+            // inside this async void handler (confirmed 2026-09-15 review).
+            cancelButton.Click += (s, e) => { if (resolving) return; window.DialogResult = false; window.Close(); };
             StyleButton(cancelButton);
             resolveButtonLabel = MakeLabel("Resolve");
             resolveButton = new Button { Content = resolveButtonLabel, Padding = new Thickness(12, 5, 12, 5), IsEnabled = false };
@@ -265,8 +272,10 @@ namespace SaveLocker.Playnite
 
         private async void ResolveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!selectedVersionId.HasValue) return;
+            if (!selectedVersionId.HasValue || resolving) return;
+            resolving = true;
             resolveButton.IsEnabled = false;
+            cancelButton.IsEnabled = false;
             resolveButtonLabel.Text = "Resolving…";
             try
             {
@@ -277,9 +286,20 @@ namespace SaveLocker.Playnite
             catch (Exception ex)
             {
                 Logger.Error(ex, "SaveLocker: conflict resolve failed");
-                MessageBox.Show(window, "Couldn't resolve the conflict: " + ex.Message, "SaveLocker", MessageBoxButton.OK, MessageBoxImage.Error);
-                resolveButton.IsEnabled = true;
-                resolveButtonLabel.Text = "Resolve";
+                // Cancel is disabled while resolving, but the window's own system close button isn't —
+                // if the user still got it closed out from under us, touching it further would only
+                // throw a second, unhandled exception (see the cancelButton handler above).
+                if (window.IsVisible)
+                {
+                    MessageBox.Show(window, "Couldn't resolve the conflict: " + ex.Message, "SaveLocker", MessageBoxButton.OK, MessageBoxImage.Error);
+                    resolveButton.IsEnabled = true;
+                    cancelButton.IsEnabled = true;
+                    resolveButtonLabel.Text = "Resolve";
+                }
+            }
+            finally
+            {
+                resolving = false;
             }
         }
 

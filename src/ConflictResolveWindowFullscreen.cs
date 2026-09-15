@@ -45,6 +45,7 @@ namespace SaveLocker.Playnite
         private Border cloudPanel;
         private Button resolveButton;
         private TextBlock resolveButtonLabel;
+        private bool resolving;
 
         public ConflictResolveWindowFullscreen(
             Window window, LocalApiClient client, string gameName, Guid conflictId,
@@ -197,6 +198,13 @@ namespace SaveLocker.Playnite
 
         private void Cancel()
         {
+            // A resolve call already in flight must finish (or fail) before Cancel — via the button,
+            // Escape, or Enter re-dispatched here — can close the window; otherwise ResolveButton_Click's
+            // continuation runs against a closed window: Window.DialogResult throws once the window is
+            // gone, and the resulting catch block's MessageBox.Show(window, ...) throws a second time
+            // from the same closed owner, unhandled inside that async void handler (confirmed 2026-09-15
+            // review).
+            if (resolving) return;
             window.DialogResult = false;
             window.Close();
         }
@@ -297,7 +305,8 @@ namespace SaveLocker.Playnite
 
         private async void ResolveButton_Click(object sender, RoutedEventArgs e)
         {
-            if (!selectedVersionId.HasValue) return;
+            if (!selectedVersionId.HasValue || resolving) return;
+            resolving = true;
             resolveButton.IsEnabled = false;
             resolveButtonLabel.Text = "Resolving…";
             try
@@ -309,9 +318,19 @@ namespace SaveLocker.Playnite
             catch (Exception ex)
             {
                 Logger.Error(ex, "SaveLocker: conflict resolve failed (fullscreen)");
-                MessageBox.Show(window, "Couldn't resolve the conflict: " + ex.Message, "SaveLocker", MessageBoxButton.OK, MessageBoxImage.Error);
-                resolveButton.IsEnabled = true;
-                resolveButtonLabel.Text = "Resolve";
+                // Escape/Enter re-enter Cancel()/this handler even with the buttons disabled, but
+                // Cancel() itself is guarded by `resolving` above, so the window can't have closed
+                // out from under this continuation — still checked defensively before touching it.
+                if (window.IsVisible)
+                {
+                    MessageBox.Show(window, "Couldn't resolve the conflict: " + ex.Message, "SaveLocker", MessageBoxButton.OK, MessageBoxImage.Error);
+                    resolveButton.IsEnabled = true;
+                    resolveButtonLabel.Text = "Resolve";
+                }
+            }
+            finally
+            {
+                resolving = false;
             }
         }
 
