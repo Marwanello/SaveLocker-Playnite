@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -24,6 +25,8 @@ namespace SaveLocker.Playnite
 
         private readonly SaveLockerSettingsViewModel settingsViewModel;
         private readonly LocalApiClient client;
+        private readonly object gateLock = new object();
+        private readonly HashSet<Guid> gamesInFlight = new HashSet<Guid>();
 
         public override Guid Id => PluginId;
 
@@ -46,10 +49,25 @@ namespace SaveLocker.Playnite
 
         public override void OnGameStarting(OnGameStartingEventArgs args)
         {
+            TrackedGameDto tracked = null;
+            var ownsGate = false;
             try
             {
-                var tracked = FindMatch(args.Game);
+                tracked = FindMatch(args.Game);
                 if (tracked == null) return;
+
+                // Playnite has occasionally been seen to fire OnGameStarting twice for one launch
+                // (e.g. certain emulator/launcher setups) — without this, a second concurrent call for
+                // the same game would run its own gate check and could open a second conflict-resolve
+                // window over the first one. `ownsGate` (not just "was it added") tells the `finally`
+                // below whether THIS call is the one that should clear the entry — a losing, re-entrant
+                // call must not remove the winning call's still-in-progress guard.
+                lock (gateLock) { ownsGate = gamesInFlight.Add(tracked.Id); }
+                if (!ownsGate)
+                {
+                    Logger.Warn($"SaveLocker: OnGameStarting re-entered for '{tracked.Name}' while already in flight, skipping");
+                    return;
+                }
 
                 var gate = LaunchGateResult.ProceedFallback;
                 var options = new GlobalProgressOptions("SaveLocker: checking for a newer save…", false) { IsIndeterminate = true };
@@ -94,6 +112,10 @@ namespace SaveLocker.Playnite
             {
                 // Fail open, unconditionally — SaveLocker must never be the reason a game won't start.
                 Logger.Error(ex, "SaveLocker: OnGameStarting failed, launching anyway");
+            }
+            finally
+            {
+                if (ownsGate) lock (gateLock) { gamesInFlight.Remove(tracked.Id); }
             }
         }
 

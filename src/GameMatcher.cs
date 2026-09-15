@@ -18,27 +18,31 @@ namespace SaveLocker.Playnite
         {
             if (game == null || tracked == null || tracked.Count == 0) return null;
 
+            // Each tier below stops at the first ambiguous match rather than falling through to
+            // FirstOrDefault's arbitrary pick — if two tracked games tie on a signal this specific,
+            // guessing risks binding a save to the wrong game entirely, and a weaker tier (e.g. name)
+            // is no more likely to disambiguate them correctly than this one was.
             var isSteam = string.Equals(game.Source?.Name, "Steam", StringComparison.OrdinalIgnoreCase);
             if (isSteam && uint.TryParse(game.GameId, out var appId))
             {
-                var byAppId = tracked.FirstOrDefault(t => t.SteamAppId.HasValue && t.SteamAppId.Value == appId);
-                if (byAppId != null) return byAppId;
+                var byAppId = tracked.Where(t => t.SteamAppId.HasValue && t.SteamAppId.Value == appId).ToList();
+                if (byAppId.Count > 0) return byAppId.Count == 1 ? byAppId[0] : null;
             }
 
             if (!string.IsNullOrWhiteSpace(game.InstallDirectory))
             {
                 var normalizedGameDir = NormalizeDir(game.InstallDirectory);
-                var byDir = tracked.FirstOrDefault(t =>
-                    !string.IsNullOrWhiteSpace(t.InstallDir) && NormalizeDir(t.InstallDir) == normalizedGameDir);
-                if (byDir != null) return byDir;
+                var byDir = tracked.Where(t =>
+                    !string.IsNullOrWhiteSpace(t.InstallDir) && NormalizeDir(t.InstallDir) == normalizedGameDir).ToList();
+                if (byDir.Count > 0) return byDir.Count == 1 ? byDir[0] : null;
             }
 
             if (!string.IsNullOrWhiteSpace(game.Name))
             {
-                var byName = tracked.FirstOrDefault(t =>
+                var byName = tracked.Where(t =>
                     (!string.IsNullOrWhiteSpace(t.Alias) && string.Equals(t.Alias, game.Name, StringComparison.OrdinalIgnoreCase)) ||
-                    string.Equals(t.Name, game.Name, StringComparison.OrdinalIgnoreCase));
-                if (byName != null) return byName;
+                    string.Equals(t.Name, game.Name, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (byName.Count > 0) return byName.Count == 1 ? byName[0] : null;
             }
 
             return null;
