@@ -21,7 +21,31 @@ Compress-Archive -Path "$src\extension.yaml", "$src\SaveLocker.Playnite.dll" -De
 Rename-Item dist\SaveLocker.zip SaveLocker.pext -Force
 ```
 
-## Install — fast path: `scripts/Install-ToPortable.ps1`
+## Install — fastest path: the main repo's `tests/testenv.ps1`
+
+If you also have the main `SaveLocker` repo checked out (a sibling of this one), its throwaway test
+rig now knows about this plugin too — `build`/`up`/`clean` build, install and remove it alongside
+the rig's own test console + Windows agent, exactly like it already does for the Decky plugin:
+
+```powershell
+cd ..\SaveLocker
+.\tests\testenv.ps1 build -PlaynitePath C:\SaveLockerTest\Playnite
+.\tests\testenv.ps1 up    -PlaynitePath C:\SaveLockerTest\Playnite
+```
+
+`up` starts the test console and a test Windows agent (port `:5188` by default — see
+`tests\testenv.ps1`'s own `-WinPort`, not the `:5177` used further below in the fully-manual
+walkthrough, which predates this integration and doesn't touch `testenv.ps1` at all) alongside
+installing this plugin into `C:\SaveLockerTest\Playnite\Extensions\SaveLocker`. `clean` removes
+just that folder, never the rest of the Playnite install. `-PlaynitePluginRepo` (or
+`$env:SAVELOCKER_PLAYNITE_PLUGIN_REPO`) points it at a specific checkout/worktree of this repo if
+the default sibling-directory guess (`..\SaveLocker-Playnite`) isn't the one you want built; set
+`$env:SAVELOCKER_PLAYNITE_PATH` once to skip retyping `-PlaynitePath` every call. `tests\testenv.ps1
+status` reports whether the plugin is currently installed at that path. You still need the
+Add-ons → SaveLocker → Settings screen for Agent URL/State directory, the same as every other
+install method below — `testenv.ps1` installs the plugin files, it doesn't write plugin settings.
+
+## Install — fast path without the main repo: `scripts/Install-ToPortable.ps1`
 
 Builds and copies `extension.yaml` + the DLL straight into `<PlaynitePath>\Extensions\SaveLocker`
 in one step — no `.pext` pack, no double-click install. Works against any Playnite install root,
