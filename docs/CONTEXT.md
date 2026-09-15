@@ -13,13 +13,22 @@ the user's own account, distinct from the project's canonical `SkorcherX` org th
 under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `D:\Projects\SaveLocker\SaveLocker-Playnite`, next to `SaveLocker` and `SaveLocker-Decky`.
 
-## Status — Group 3 (Phases 8–11) built this session, not yet hardware-verified
+## Status — Group 3 (Phases 8–11) shipped and hardware-verified, 2026-09-15
 
 `implementation-grouping.md`'s Group 3 — "the spine: scaffold, settings, core gate, matching" — is
-implemented end to end and **builds and packs clean**, but has not yet been run inside a real,
-running Playnite. That's the one thing no automated check here can prove (this whole track is
-manual/hardware-verified by design, per the plan doc) — **next action for whoever picks this up is
-`docs/Build and Run.md`'s manual verification walkthrough, steps 1–6, on a real or portable Playnite.**
+implemented end to end and has been run against a real, running portable Playnite (Harmony theme):
+the plugin loads, matches a real Steam-installed game via AppID, blocks on a genuine seeded conflict,
+resolves it through a theme-driven window, pushes on exit, and fails open when the agent is down.
+
+**Not yet re-confirmed on hardware, both fixed late in the same session:**
+- The Fullscreen-mode resolve window (`ConflictResolveWindowFullscreen.cs`) — Desktop mode's window
+  was confirmed unstyled/non-controller-friendly there and replaced; the replacement builds clean but
+  hasn't been retested in Fullscreen mode yet, including whether a real controller drives it.
+- The "lease held elsewhere" (`ProceedSyncPaused`) manual test case — blocked earlier by a lease-test
+  script that was authenticating as the wrong machine; fixed, not yet re-run.
+
+Whoever picks this up next: re-run `docs/Build and Run.md`'s step 7 (Fullscreen) and step 3 (lease)
+specifically — the rest of the 6-step walkthrough is already confirmed.
 
 | Phase | Status |
 |---|---|
@@ -69,9 +78,14 @@ manual/hardware-verified by design, per the plan doc) — **next action for whoe
 
 ## Next action
 
-1. Run `docs/Build and Run.md`'s manual verification, steps 1–6, against a portable Playnite +
-   test agent (or, once confident, the real installed one).
-2. Push (or PR) the `InstallDir` change on `claude/playnite-plugin-group-3-acd4eb` in the main repo
-   — Phase 11's second matching tier is silently a no-op without it.
-3. Once verified: update this file, move today's write-up into `docs/logs/`, and update the Group 3
-   row in the main repo's `implementation-grouping.md` to `✅ Shipped`.
+1. Re-run `docs/Build and Run.md`'s steps 3 (lease held elsewhere, via the corrected WSL script) and
+   7 (Fullscreen mode) — the only two of the manual-verification walkthrough not yet reconfirmed since
+   this session's fixes.
+2. Once both are confirmed: move this session's write-up into `docs/logs/` (main repo's
+   `docs/progress.md`/`docs/session_summary.md` already have the full technical detail).
+3. Group 4 (Phase 12, the enroll/link popup) is next per `implementation-grouping.md`'s recommended
+   order.
+
+Already done this session: the `InstallDir` change is pushed and PR'd
+(`Marwanello/SaveLocker#38`); `implementation-grouping.md`'s Group 3 row in the main repo is marked
+`✅ Done`; this plugin's own PR is open (`Marwanello/SaveLocker-Playnite#1`).
