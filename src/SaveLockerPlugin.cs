@@ -141,12 +141,20 @@ namespace SaveLocker.Playnite
                 var deviceVersion = client.GetVersionAsync(conflict.VersionBId).GetAwaiter().GetResult();
                 var deviceStats = client.GetVersionStatsAsync(conflict.VersionBId).GetAwaiter().GetResult();
 
-                var window = new ConflictResolveWindow(
-                    client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats)
+                // CreateWindow (not `new Window()`) is what makes this follow whatever theme the
+                // player has picked — it returns a Window already carrying Playnite's own chrome and
+                // StandardWindowStyle, so Background/Foreground resolve from the active theme instead
+                // of WPF's plain-white default. A hand-built Window never picks that up (hardware-found
+                // 2026-09-15: it rendered as a stray white dialog against a dark Playnite theme).
+                var themedWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
                 {
-                    Owner = PlayniteApi.Dialogs.GetCurrentAppWindow(),
-                };
-                return window.ShowDialog() == true;
+                    ShowMinimizeButton = false,
+                    ShowMaximizeButton = false,
+                });
+                themedWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
+                var resolveWindow = new ConflictResolveWindow(
+                    themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats);
+                return resolveWindow.ShowDialog() == true;
             }
             catch (Exception ex)
             {

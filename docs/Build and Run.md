@@ -210,12 +210,24 @@ With the portable Playnite + test agent from above running:
 
    ```powershell
    # From the main SaveLocker repo:
-   .\tests\testenv.ps1 conflict -Wsl
+   .\tests\testenv.ps1 conflict -Windows -Wsl
    ```
+
+   **Both flags are required.** `-Wsl` alone seeds only WSL's side — Windows never gets "Conflict
+   Game" added locally, so the plugin's `FindMatch` finds nothing, its controller never engages,
+   and Playnite silently falls back to a plain launch (no pause, no popup, easy to mistake for a
+   plugin bug — confirmed by hitting exactly this on hardware 2026-09-15). `-Windows` on its own is
+   fine too, seeding Windows as the side that discovers the divergence against whatever the server
+   already holds — useful for reseeding just the Windows side after a `-Wsl`-only run. Neither flag
+   given auto-picks Windows + WSL (or Windows + Deck if one is configured), which is equivalent to
+   `-Windows -Wsl` here since no Deck is configured in this rig.
 
    This seeds a diverging save for "Conflict Game" on Windows (this rig's own test agent — the SAME
    one Playnite is pointed at) and on WSL as the second, disagreeing side — no manual
-   second-machine-identity dance needed. Launch "Conflict Game" from the portable Playnite:
+   second-machine-identity dance needed. The Windows test tray must also be running (`testenv.ps1
+   up`, or `up -Only windows` if seeding stopped it) — the plugin's pre-launch check talks to it
+   over the local API, and with it down `FindMatch` fails the same silent-fallback way described
+   above. Launch "Conflict Game" from the portable Playnite:
    `PrepareLaunchAsync` runs its commit-before-choose push, sees the genuine divergence, and expect
    the progress dialog to be replaced by the **"This device / The cloud"** resolve window — **the
    game does not start** until you pick a side or cancel. Pick a side → the window closes → the fake
