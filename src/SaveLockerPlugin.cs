@@ -152,9 +152,17 @@ namespace SaveLocker.Playnite
                     ShowMaximizeButton = false,
                 });
                 themedWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
-                var resolveWindow = new ConflictResolveWindow(
-                    themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats);
-                return resolveWindow.ShowDialog() == true;
+
+                // Fullscreen mode has no equivalent of Desktop's window-chrome/popup theme resources
+                // (confirmed against Playnite's own Fullscreen theme source, not assumed) — the Desktop
+                // resolve window renders as an unstyled white box there. Routed to a separate,
+                // Fullscreen-native overlay instead of trying to make one window serve both.
+                bool? result = PlayniteApi.ApplicationInfo.Mode == ApplicationMode.Fullscreen
+                    ? new ConflictResolveWindowFullscreen(
+                        themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats).ShowDialog()
+                    : new ConflictResolveWindow(
+                        themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats).ShowDialog();
+                return result == true;
             }
             catch (Exception ex)
             {
