@@ -182,8 +182,20 @@ With the portable Playnite + test agent from above running:
 
 2. **Tracked game, no conflict (the common case)** — launch the game you tracked in step 4 above.
    Expect: a brief "SaveLocker: checking for a newer save…" progress dialog (often too fast to
-   really see on localhost), then the game launches normally. Check the agent's log
-   (`C:\SaveLockerTest\agent-state\agent.log`) for a `pre-launch-sync` line.
+   really see on localhost), then the game launches normally.
+
+   **The real signal to check for is NOT a literal `pre-launch-sync` line — that text is never
+   logged.** `pre-launch-sync` calls `SyncEngine.PrepareLaunchAsync`, which logs through the
+   ordinary push/pull messages instead: `"[<game>] pushed new version."` / `"[<game>] no local
+   changes since last sync."` (the commit-before-choose push), then `"[<game>] already up to date."`
+   or a real pull line (the pull that follows it) — both landing in the same second as Playnite's
+   own `"Starting <game>... Using plugin to start a game."` line in its own `playnite.log`.
+   Cross-reference the two logs by timestamp for a confirmed read.
+   **Do NOT look for `"running — lease taken, launch pull skipped"`** — that message is
+   `SyncEngine.OnGameLaunchAsync`, the older reactive `ProcessWatcher` that runs independently of
+   any launcher and fires on its own polling interval regardless of whether the Playnite plugin
+   matched anything. Seeing it proves the process was noticed, not that the plugin's gate ran —
+   confirmed by confusing the two while first verifying this on hardware 2026-09-15.
 
 3. **Lease held elsewhere (`ProceedSyncPaused`)** — while the game from step 4 is checked out by
    another sync in progress (or fake it: acquire a lease against the test server directly via
@@ -191,9 +203,29 @@ With the portable Playnite + test agent from above running:
    `docs/API Reference.md` in the main repo), launch the game again. Expect: it launches anyway, and
    a Playnite notification appears naming the holder machine.
 
-4. **A genuine, confirmed conflict — the one case that must block.** Simulate a second machine on
-   the same box, the same way the main repo's own `tests/seed-test-conflict.sh` does on Linux —
-   a second config/port/identity against the SAME test server:
+4. **A genuine, confirmed conflict — the one case that must block.** Needs a real, launchable
+   Playnite entry to click Play on — a placeholder game exe makes that possible without needing an
+   actual title. See **"Conflict Game" fake exe**, below, for what it is and how to seed one; once
+   its Playnite entry exists, the seeding itself is one command:
+
+   ```powershell
+   # From the main SaveLocker repo:
+   .\tests\testenv.ps1 conflict -Wsl
+   ```
+
+   This seeds a diverging save for "Conflict Game" on Windows (this rig's own test agent — the SAME
+   one Playnite is pointed at) and on WSL as the second, disagreeing side — no manual
+   second-machine-identity dance needed. Launch "Conflict Game" from the portable Playnite:
+   `PrepareLaunchAsync` runs its commit-before-choose push, sees the genuine divergence, and expect
+   the progress dialog to be replaced by the **"This device / The cloud"** resolve window — **the
+   game does not start** until you pick a side or cancel. Pick a side → the window closes → the fake
+   exe launches. Cancel → back to the library, nothing changed, nothing launched. Confirm in the
+   agent log and (if the test server has a console attached) the dashboard that the conflict is now
+   resolved. Re-seeding needs a full `testenv.ps1 clean` first — see that command's own header
+   comment in `tests/testenv.ps1`.
+
+   Prefer full manual control over both sides instead (no `testenv.ps1`, or a specific machine name)?
+   The equivalent by hand:
 
    ```powershell
    # Terminal 3 — a second machine identity, same test server, different state/port:
@@ -202,21 +234,41 @@ With the portable Playnite + test agent from above running:
    $env:SAVELOCKER_TRAY_PORT = "5176"
    .\SaveLocker.Agent.exe set-server --url http://localhost:5199
    .\SaveLocker.Agent.exe register --name "OtherPC"
-   .\SaveLocker.Agent.exe add-game --name "Your Game Name" --dir "C:\SaveLockerTest\other-save-copy"
+   .\SaveLocker.Agent.exe add-game --name "Conflict Game" --dir "C:\SaveLockerTest\other-save-copy"
    # Edit a file under that folder, then:
    .\SaveLocker.Agent.exe push
    ```
 
-   Now edit the save under the FIRST machine's tracked folder too (the one from step 4) without
-   pulling first, and launch the game through the portable Playnite. `pre-launch-sync` runs a
-   commit-before-choose push, sees the genuine divergence, and this time expect: the progress dialog
-   is replaced by the **"This device / The cloud"** resolve window, and **the game does not start**
-   until you pick a side or cancel. Pick a side → the window closes → the game launches. Cancel →
-   back to the library, nothing changed, nothing launched. Confirm in the agent log and (if the test
-   server has a console attached) the dashboard that the conflict is now resolved.
+   Then edit the save under the FIRST machine's tracked folder too, without pulling first, and
+   launch "Conflict Game" through the portable Playnite the same as above.
 
-5. **Post-exit push** — close the game from step 2. Expect no interruption (it's non-blocking by
-   design); check the agent log for a `post-exit-sync` line shortly after.
+   ### "Conflict Game" fake exe
+
+   `SaveLocker.Agent.exe fake-game` (built as part of the ordinary Windows Agent build — no
+   separate project) opens a small window — "Conflict Game is running" and an **Exit** button in
+   the middle — standing in for a real game so this step has something real to click Play on and
+   close. It's at:
+
+   ```
+   <main SaveLocker repo>\src\Agent\bin\Debug\net10.0-windows\SaveLocker.Agent.exe
+   ```
+
+   with the argument `fake-game`. Playnite has no CLI to add a library entry, so wiring it in is a
+   **one-time manual step** (the entry persists across `testenv.ps1 clean`/re-seeding, since `clean`
+   only wipes SaveLocker-test state, never Playnite's own library): in the portable Playnite,
+   **Add game → Custom game**, then set
+   - **Name**: `Conflict Game` (exact — this is what `GameMatcher`'s name/alias tier matches on)
+   - **Executable**: the path above
+   - **Arguments**: `fake-game`
+
+   `.\tests\testenv.ps1 conflict` prints this same Name/Executable/Arguments after seeding the
+   Windows side, so there's nothing to memorize.
+
+5. **Post-exit push** — close the game from step 2 (or the fake exe's Exit button, for "Conflict
+   Game"). Expect no interruption (it's non-blocking by design). Same caveat as step 2: check for an
+   ordinary push line (`"pushed new version."` / `"no local changes since last sync."`) shortly
+   after — there is no literal `post-exit-sync` line either, since that route also just calls into
+   `SyncEngine.OnGameExitAsync`'s own `PushAsync`.
 
 6. **Agent not running at all — the fail-open case.** Stop the test agent entirely, then launch the
    tracked game. Expect: it launches immediately, no delay, no error dialog. This is the single most
