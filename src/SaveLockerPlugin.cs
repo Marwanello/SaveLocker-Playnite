@@ -53,8 +53,14 @@ namespace SaveLocker.Playnite
             var ownsGate = false;
             try
             {
-                tracked = FindMatch(args.Game);
-                if (tracked == null) return;
+                tracked = FindMatch(args.Game, out var agentReachable);
+                if (tracked == null)
+                {
+                    // Only nudge when the agent actually answered with "no match" — an unreachable
+                    // agent means this launch is exactly like an untracked game today, nothing to link.
+                    if (agentReachable) MaybeShowLinkNudge(args.Game);
+                    return;
+                }
 
                 // Playnite has occasionally been seen to fire OnGameStarting twice for one launch
                 // (e.g. certain emulator/launcher setups) — without this, a second concurrent call for
@@ -123,7 +129,7 @@ namespace SaveLocker.Playnite
         {
             try
             {
-                var tracked = FindMatch(args.Game);
+                var tracked = FindMatch(args.Game, out _);
                 if (tracked == null) return;
 
                 var gameId = tracked.Id;
@@ -197,11 +203,13 @@ namespace SaveLocker.Playnite
             }
         }
 
-        private TrackedGameDto FindMatch(Game game)
+        private TrackedGameDto FindMatch(Game game, out bool agentReachable)
         {
+            agentReachable = false;
             try
             {
                 var tracked = client.GetGamesAsync().GetAwaiter().GetResult();
+                agentReachable = true;
                 return GameMatcher.FindMatch(game, tracked);
             }
             catch (Exception ex)
@@ -209,6 +217,50 @@ namespace SaveLocker.Playnite
                 // Agent unreachable/not running — same as an untracked game, no gate at all.
                 Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Tier 4 of GameMatcher's priority chain (tasks/playnite-plugin/plan.md, "Automatic game
+        /// matching", point 4): a low-friction, dismissible nudge shown once ever per Playnite game
+        /// that never automatically matched, with a one-click path into the Phase 12 picker. Never
+        /// blocking — the game already launched normally by the time this fires.
+        /// </summary>
+        private void MaybeShowLinkNudge(Game game)
+        {
+            try
+            {
+                var dataDir = GetPluginUserDataPath();
+                if (NudgeState.WasShown(dataDir, game.Id)) return;
+                NudgeState.MarkShown(dataDir, game.Id);
+
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "savelocker-link-nudge-" + game.Id,
+                    $"SaveLocker couldn't automatically match '{game.Name}' — click to link it and sync this game.",
+                    NotificationType.Info,
+                    () => ShowLinkPopup(game)));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "SaveLocker: link nudge failed");
+            }
+        }
+
+        private void ShowLinkPopup(Game game)
+        {
+            try
+            {
+                var themedWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMinimizeButton = false,
+                    ShowMaximizeButton = false,
+                });
+                themedWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
+                new LinkToSaveLockerWindow(themedWindow, PlayniteApi, client, game).ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "SaveLocker: link popup failed to open");
             }
         }
     }
