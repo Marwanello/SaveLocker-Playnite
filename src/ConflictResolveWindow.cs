@@ -68,20 +68,20 @@ namespace SaveLocker.Playnite
 
             var root = new StackPanel { Margin = new Thickness(16) };
 
-            root.Children.Add(new TextBlock
+            root.Children.Add(Themed(new TextBlock
             {
                 Text = gameName + " changed on this device and the cloud since the last sync.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 4),
                 FontWeight = FontWeights.SemiBold,
-            });
-            root.Children.Add(new TextBlock
+            }));
+            root.Children.Add(Themed(new TextBlock
             {
                 Text = "Pick which save to keep. The game will not start until you choose, or cancel.",
                 TextWrapping = TextWrapping.Wrap,
                 Opacity = 0.8,
                 Margin = new Thickness(0, 0, 0, 12),
-            });
+            }));
 
             var panels = new Grid();
             panels.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -112,10 +112,24 @@ namespace SaveLocker.Playnite
             footer.Children.Add(resolveButton);
             root.Children.Add(footer);
 
-            // No TextBlock above sets its own Foreground — they correctly inherit the window's own
-            // theme-driven Foreground. Buttons need the explicit StyleButton treatment below instead;
-            // see its comment for why plain inheritance doesn't reach them.
             window.Content = root;
+        }
+
+        // Every plain TextBlock in this window goes through Themed(...) rather than trusting
+        // Foreground inheritance from the Window — confirmed, by reading Playnite's own Default-theme
+        // template (Themes/Desktop/Default/DerivedStyles/StandardWindowStyle.xaml, which Harmony falls
+        // back to since it defines no window style of its own), that the WindowBase style there sets
+        // Background and BorderBrush but never Foreground. A Window's Foreground therefore never
+        // becomes the theme's TextBrush at all; it stays at WPF's own Control default (near-black),
+        // which is exactly what a first pass here wrongly assumed would "correctly inherit" — bold/
+        // large text partially hid it, but the smaller stat lines (size, file count, newest change)
+        // and the intro sentence made it visible enough for the user to report it as unreadable
+        // (screenshot 2026-09-15). The button-label fix below predates this and independently reached
+        // the same conclusion for Button/ContentPresenter's own broken inheritance path.
+        private static TextBlock Themed(TextBlock block)
+        {
+            block.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
+            return block;
         }
 
         // A first attempt set Button.Foreground and relied on the ContentPresenter's
@@ -161,12 +175,7 @@ namespace SaveLocker.Playnite
             button.BorderThickness = new Thickness(1);
         }
 
-        private static TextBlock MakeLabel(string text)
-        {
-            var label = new TextBlock { Text = text };
-            label.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
-            return label;
-        }
+        private static TextBlock MakeLabel(string text) => Themed(new TextBlock { Text = text });
 
         // Lucide renders with stroke, not fill (currentColor stroke, 2px, round caps/joins) — this
         // mirrors that exactly rather than filling the shape, which is what the raw path data assumes.
@@ -195,18 +204,18 @@ namespace SaveLocker.Playnite
 
             var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
             header.Children.Add(BuildIcon(iconData));
-            header.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) });
+            header.Children.Add(Themed(new TextBlock { Text = title, FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) }));
             panel.Children.Add(header);
 
-            panel.Children.Add(new TextBlock { Text = caption, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, FontSize = 11, Margin = new Thickness(0, 4, 0, 8) });
-            panel.Children.Add(new TextBlock { Text = FormatAgo(version.CreatedAt), FontWeight = FontWeights.SemiBold, FontSize = 16 });
-            panel.Children.Add(new TextBlock { Text = version.CreatedAt.ToLocalTime().ToString("g"), Opacity = 0.6, FontSize = 11, Margin = new Thickness(0, 0, 0, 6) });
-            panel.Children.Add(new TextBlock { Text = FormatSize(version.Size), FontSize = 12 });
+            panel.Children.Add(Themed(new TextBlock { Text = caption, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, FontSize = 11, Margin = new Thickness(0, 4, 0, 8) }));
+            panel.Children.Add(Themed(new TextBlock { Text = FormatAgo(version.CreatedAt), FontWeight = FontWeights.SemiBold, FontSize = 16 }));
+            panel.Children.Add(Themed(new TextBlock { Text = version.CreatedAt.ToLocalTime().ToString("g"), Opacity = 0.6, FontSize = 11, Margin = new Thickness(0, 0, 0, 6) }));
+            panel.Children.Add(Themed(new TextBlock { Text = FormatSize(version.Size), FontSize = 12 }));
             if (stats != null)
             {
-                panel.Children.Add(new TextBlock { Text = $"{stats.FileCount} file(s)", FontSize = 12 });
+                panel.Children.Add(Themed(new TextBlock { Text = $"{stats.FileCount} file(s)", FontSize = 12 }));
                 if (stats.NewestFileWriteUtc.HasValue)
-                    panel.Children.Add(new TextBlock { Text = "Newest change: " + FormatAgo(stats.NewestFileWriteUtc.Value), FontSize = 12 });
+                    panel.Children.Add(Themed(new TextBlock { Text = "Newest change: " + FormatAgo(stats.NewestFileWriteUtc.Value), FontSize = 12 }));
             }
 
             var select = new Button { Content = MakeLabel("Keep this"), Margin = new Thickness(0, 10, 0, 0), Padding = new Thickness(8, 4, 8, 4), HorizontalAlignment = HorizontalAlignment.Left };
