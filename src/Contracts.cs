@@ -211,4 +211,25 @@ namespace SaveLocker.Playnite
             };
         }
     }
+
+    /// <summary>SaveLocker/src/Agent.Core/AgentApiServer.cs's <c>PlaynitePluginStatusDto</c> — GET
+    /// /api/playnite-plugin's answer to "is a newer version of me waiting on the server"
+    /// (tasks/playnite-plugin/plan.md, Phase 14). <see cref="State"/> mirrors
+    /// <c>Agent.PlaynitePluginState</c>'s name as a plain string (NoPlaynite/NotInstalled/UpToDate/
+    /// Available/Failed/NotApplicable) — only "Available" matters to this plugin; the others are
+    /// either not-applicable-to-a-running-instance-of-itself or nothing to act on.</summary>
+    internal sealed class PlaynitePluginStatusDto
+    {
+        public string State;
+        public string Message;
+
+        public static PlaynitePluginStatusDto FromJson(IDictionary<string, object> o)
+        {
+            return new PlaynitePluginStatusDto
+            {
+                State = Json.GetString(o, "state"),
+                Message = Json.GetString(o, "message"),
+            };
+        }
+    }
 }

@@ -14,9 +14,11 @@ SaveLocker-Playnite/
 │   ├── SaveLockerPlugin.cs         # GenericPlugin entry point. OnGameStarting (pre-launch gate),
 │   │                               #   OnGameStopped (post-exit push), GetSettings/GetSettingsView,
 │   │                               #   GetGameMenuItems (Link to SaveLocker / Sync now / Resolve
-│   │                               #   conflict…, Phase 13). Holds no sync rules — calls
-│   │                               #   LocalApiClient and acts on the LaunchDecision it gets back,
-│   │                               #   fail-open except on Blocked.
+│   │                               #   conflict…, Phase 13), OnApplicationStarted's self-update check
+│   │                               #   (Phase 14, GET /api/playnite-plugin — surfaces a restart notice
+│   │                               #   when the agent has a newer package waiting). Holds no sync
+│   │                               #   rules — calls LocalApiClient and acts on the LaunchDecision it
+│   │                               #   gets back, fail-open except on Blocked.
 │   ├── GameMatcher.cs              # Phase 11: Steam AppID → InstallDir → name/Alias chain.
 │   ├── GameStatusControl.cs        # Phase 13's GetGameViewControl: status chip (Not linked / Agent
 │   │                               #   offline / Not synced yet / In sync / Conflict) + one action

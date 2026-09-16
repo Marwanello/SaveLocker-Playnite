@@ -276,6 +276,38 @@ namespace SaveLocker.Playnite
                     Logger.Warn(ex, "SaveLocker: couldn't backfill linked tags on startup");
                 }
             });
+            Task.Run(() => CheckSelfUpdateAsync());
+        }
+
+        /// <summary>
+        /// Phase 14 — self-update consumption. Asks GET /api/playnite-plugin (the agent's own
+        /// PlaynitePlugin.CheckAsync, check-only) whether a newer package is waiting; the agent's own
+        /// recurring timer already refuses to write files while Playnite is running
+        /// (Agent.PlaynitePlugin.IsPlayniteRunning), so from inside a live Playnite process "Available"
+        /// always means exactly one thing: close and reopen Playnite so the agent can apply it. The
+        /// outcome's own Message already reads like that instruction (its "close Playnite first"
+        /// branch, verified against the agent's own doc comment) — nothing extra to compose here.
+        /// Checked once per Playnite session; a long-running session that never restarts won't see a
+        /// later-arriving version until its next launch, which is an acceptable gap for a notice whose
+        /// entire point is "restart me."
+        /// </summary>
+        private async Task CheckSelfUpdateAsync()
+        {
+            try
+            {
+                var status = await client.GetPlaynitePluginStatusAsync().ConfigureAwait(false);
+                if (status.State == "Available")
+                {
+                    PlayniteApi.Notifications.Add(new NotificationMessage(
+                        "savelocker-plugin-update", "SaveLocker: " + status.Message, NotificationType.Info));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fail open, same as everywhere else — an unreachable agent just means no notice this
+                // session, not an error worth surfacing to the player.
+                Logger.Warn(ex, "SaveLocker: couldn't check for a plugin update");
+            }
         }
 
         public override void OnGameStopped(OnGameStoppedEventArgs args)

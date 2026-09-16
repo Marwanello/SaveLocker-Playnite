@@ -186,5 +186,14 @@ namespace SaveLocker.Playnite
             return await SendAsync(HttpMethod.Post, "/api/enroll", new { ids = new[] { candidateId } },
                 o => EnrollResult.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
         }
+
+        // tasks/playnite-plugin/plan.md, Phase 14 — "is a newer version of me waiting on the server."
+        // Touches the network on the far side (Agent.PlaynitePlugin.CheckAsync), so it gets a longer
+        // timeout than the ordinary local-only calls above; still bounded, since this only ever runs
+        // once at OnApplicationStarted and must not hang Playnite's own startup indefinitely.
+        public async Task<PlaynitePluginStatusDto> GetPlaynitePluginStatusAsync(CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Get, "/api/playnite-plugin", null, o => PlaynitePluginStatusDto.FromJson(Json.AsObject(o)), ct, timeout: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+        }
     }
 }
