@@ -13,33 +13,46 @@ the user's own account, distinct from the project's canonical `SkorcherX` org th
 under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `D:\Projects\SaveLocker\SaveLocker-Playnite`, next to `SaveLocker` and `SaveLocker-Decky`.
 
-## Status — Group 6, Phase 16 prep done 2026-09-16 (branch `playnite-plugin-group-6`), PR NOT opened
+## Status — Group 6, Phase 16 prep done 2026-09-16/17 (branch `playnite-plugin-group-6`), PR NOT opened
 
 Asked directly: prepare the `JosefNemec/PlayniteAddonDatabase` submission, but verify first and don't
 open the PR yet. Full write-up: `docs/logs/2026-09-16_group-6-phase-16-prep.md`.
 
-Two files staged under `docs/addon-submission/` (not live, not submitted anywhere) —
-`addon-manifest.yaml` (the primary listing) and `installer-manifest.yaml` (the version/package
-manifest) — built against the addon database's own README (fetched directly, not from memory) and
-cross-checked against a real merged entry for exact formatting.
+`docs/addon-submission/addon-manifest.yaml` (the primary listing, still staged — not yet submitted
+anywhere) was built against the addon database's own README (fetched directly, not from memory) and
+cross-checked against a real merged entry for exact formatting. Its `InstallerManifestUrl` pointed at
+`.../master/installer.yaml` in the first draft — **wrong**, this repo's default branch is `main`, not
+`master` (confirmed via `gh repo view`); fixed before anything was submitted.
 
-**The one real blocker, unchanged from Group 5's own notes below: no version tag has ever been pushed
-to this repo.** Confirmed again this session that Phase 17's workflow already produces everything
-`installer-manifest.yaml` needs (`.pext` asset included) — the gap is a real tag, not more code.
-`RequiredApiVersion: 6.17.0` in the staged installer manifest is not a guess: downloaded Playnite's own
-current release (10.60) and read `Playnite.SDK.dll`'s real `FileVersion` directly.
+**A real `v0.1.0` tag was pushed and Phase 17's workflow ran for real on 2026-09-16** (run
+`35151589595`, `success`, 1m19s) — the first genuine exercise of that workflow. Confirmed by
+downloading the actual release and checksumming it: `SaveLocker.zip: OK` against `SHA256SUMS.txt`. A
+real `installer.yaml` now lives at this repo's root with the real values (`Version: 0.1.0`,
+`ReleaseDate: 2026-09-16`, the real `PackageUrl`) — no longer a draft. `RequiredApiVersion: 6.17.0` is
+not a guess: downloaded Playnite's own current release (10.60) and read `Playnite.SDK.dll`'s real
+`FileVersion` directly (a different number space from the app's own 10.60 — confirmed, not assumed).
 
-**Phase 18/19 also shipped this same day in the main `SaveLocker` repo** (agent-side, no changes to
-this repo): a `PlayniteLibrary.cs` LiteDB reader (`GameScanner`'s fourth broad-sweep source, so a
+**Phase 18/19 also shipped 2026-09-16 in the main `SaveLocker` repo** (agent-side, no changes to this
+repo): a `PlayniteLibrary.cs` LiteDB reader (`GameScanner`'s fourth broad-sweep source, so a
 Playnite-only game surfaces in Add Games without this plugin ever being installed) and an `agent-ui`
 "Playnite plugin" suggest/install card. Branch `claude/playnite-group6-phase17-82e72b`. Unrelated to
 this repo's own build, mentioned here only so the next session doesn't re-derive that they exist.
 
+**What actually still blocks the PR now — not the release anymore, that part is done and verified:**
+this plugin has never been loaded into a real, running Playnite (see Group 5's and Group 3's own notes
+below — "builds clean" is the status of every phase, hardware-verified is the status of none since
+Group 3). The add-on database's own bar is "submit something that functions, not a scaffold" — a
+listing this plugin has never actually been proven to work from inside Playnite would not honestly
+clear that bar yet, tag or no tag.
+
 **Whoever picks this up next:**
-1. Push a real `v0.1.0` tag (or whatever version is current) once ready — a visible, public action
-   (real GitHub Release, real Actions minutes) intentionally not done automatically.
-2. Confirm the release's three assets + checksum, copy `installer-manifest.yaml`'s content into a real
-   `installer.yaml` at this repo's root with the real release date filled in, commit it.
+1. Hardware-verify the plugin end to end against a real portable Playnite + test agent — the same
+   gate Group 5's own notes below already call out, now the ONLY remaining one for Phase 16.
+2. (Optional but worth doing first) Exercise the agent's self-update path against this real v0.1.0
+   release — host it in the main SaveLocker server's Agent Updates config
+   (`playnite-plugin` row) and confirm `PlaynitePlugin.CheckAsync`/`InstallFirstTimeAsync` can
+   actually fetch, verify and install it. Nothing has exercised `InstallAsync` against a real package
+   yet (Phase 7's own long-standing caveat).
 3. Fork `JosefNemec/PlayniteAddonDatabase`, add `addon-manifest.yaml`'s content as
    `addons/generic/Marwanello_SaveLocker.yaml`, open the PR.
 

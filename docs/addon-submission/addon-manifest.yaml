@@ -4,11 +4,10 @@
 # addons/generic/Marwanello_SaveLocker.yaml in a fork of JosefNemec/PlayniteAddonDatabase, via pull
 # request — but no fork exists yet and no PR has been opened. Held here for review first.
 #
-# Blocked on one real prerequisite before that PR can honestly be opened: a real version tag has
-# never been pushed to this repo, so Phase 17's release workflow has never actually run for real (see
-# docs/CONTEXT.md and installer-manifest.yaml in this same folder). Submitting a store listing whose
-# InstallerManifestUrl points at nothing yet would fail the addon database's own "must function, not a
-# scaffold" bar (plan.md, Phase 16).
+# Note as of 2026-09-17: the real installer.yaml this file's InstallerManifestUrl points at now
+# exists at the repo root, referencing the genuine v0.1.0 release (tag pushed 2026-09-16, workflow
+# ran successfully, checksum verified). What still remains before submission is described in
+# docs/CONTEXT.md, not repeated here.
 #
 # Schema confirmed directly against JosefNemec/PlayniteAddonDatabase's own README (fetched
 # 2026-09-16), cross-checked against a real merged entry (AfonsoJeremias/GameManagement) for exact
