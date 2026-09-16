@@ -100,6 +100,26 @@ namespace SaveLocker.Playnite
         }
     }
 
+    /// <summary>SaveLocker/src/Shared/Contracts.cs's <c>SyncStatusDto</c> — "is my local save the same
+    /// as the cloud's, without downloading it," the cheap check the status chip polls
+    /// (tasks/playnite-plugin/plan.md, "Game page" section).</summary>
+    internal sealed class SyncStatusDto
+    {
+        public bool InSync;
+        public bool HasOpenConflict;
+        public Guid? ConflictId;
+
+        public static SyncStatusDto FromJson(IDictionary<string, object> o)
+        {
+            return new SyncStatusDto
+            {
+                InSync = Json.GetBool(o, "inSync"),
+                HasOpenConflict = Json.GetBool(o, "hasOpenConflict"),
+                ConflictId = Json.GetNullableGuid(o, "conflictId"),
+            };
+        }
+    }
+
     internal sealed class ConflictDto
     {
         public Guid Id;

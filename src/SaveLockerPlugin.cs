@@ -55,15 +55,17 @@ namespace SaveLocker.Playnite
         // equivalent every theme supports, since Playnite owns that menu itself.
         public override Control GetGameViewControl(GetGameViewControlArgs args)
         {
-            return new LinkStatusButton(PlayniteApi, client);
+            return new GameStatusControl(PlayniteApi, client);
         }
 
-        // The theme-independent equivalent of the button above — Playnite renders its own right-click
-        // menu regardless of what the active theme's XAML does or doesn't wire up. Deliberately no
-        // synchronous "is this already linked" check here: building this list runs every time a
-        // player right-clicks anything, and blocking that on a network call to show a checkmark would
-        // make every right-click feel laggy. LinkAction.RunAsync itself reports "already tracked" via
-        // a toast if the click turns out to be a no-op.
+        // The theme-independent equivalent of GameStatusControl above — Playnite renders its own
+        // right-click menu regardless of what the active theme's XAML does or doesn't wire up.
+        // Deliberately no synchronous "what's the current state" check to decide which items to show
+        // (tasks/playnite-plugin/plan.md Phase 13's "GetGameMenuItems... run every time a player
+        // right-clicks anything"): building this list must not block on a network call, so all three
+        // items are always present and each reports its own no-op via a toast (LinkAction already
+        // does this for "already tracked"; Sync now/Resolve conflict below do the same for "not
+        // linked" and "no open conflict").
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
         {
             yield return new GameMenuItem
@@ -82,6 +84,85 @@ namespace SaveLocker.Playnite
                         await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
                 },
             };
+            yield return new GameMenuItem
+            {
+                Description = "Sync now",
+                MenuSection = "SaveLocker",
+                Action = async a =>
+                {
+                    foreach (var game in a.Games)
+                        await RunSyncNowAsync(game).ConfigureAwait(true);
+                },
+            };
+            yield return new GameMenuItem
+            {
+                Description = "Resolve conflict…",
+                MenuSection = "SaveLocker",
+                // Same not-Task.Run reasoning as above — ResolveInteractivelyAsync ends in a WPF
+                // window when a conflict is actually found.
+                Action = async a =>
+                {
+                    foreach (var game in a.Games)
+                        await RunResolveConflictAsync(game).ConfigureAwait(true);
+                },
+            };
+        }
+
+        // "Sync now" from the right-click menu — a game not yet linked gets a toast pointing at
+        // "Link to SaveLocker" instead of silently doing nothing, since this item has no way to hide
+        // itself per-game (see GetGameMenuItems' own doc comment on why the list can't check state
+        // first).
+        private async Task RunSyncNowAsync(Game game)
+        {
+            var tracked = FindMatch(game, out var agentReachable);
+            if (tracked != null) { await SyncNowAction.RunAsync(PlayniteApi, client, tracked).ConfigureAwait(true); return; }
+
+            PlayniteApi.Notifications.Add(new NotificationMessage(
+                "savelocker-syncnow-unlinked-" + game.Id,
+                agentReachable
+                    ? $"SaveLocker: \"{game.Name}\" isn't linked yet — use \"Link to SaveLocker\" first."
+                    : "SaveLocker: couldn't reach the agent.",
+                NotificationType.Info));
+        }
+
+        // "Resolve conflict…" from the right-click menu — reads the game's current sync-status rather
+        // than running a fresh pre-launch-sync, since the point of this item is jumping straight to an
+        // ALREADY-confirmed conflict without re-triggering a sync cycle (SyncEngine.GetSyncStatusAsync
+        // is a cheap, no-download comparison; see LocalApiClient.GetSyncStatusAsync's own doc comment).
+        private async Task RunResolveConflictAsync(Game game)
+        {
+            var tracked = FindMatch(game, out var agentReachable);
+            if (tracked == null)
+            {
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "savelocker-resolve-unlinked-" + game.Id,
+                    agentReachable
+                        ? $"SaveLocker: \"{game.Name}\" isn't linked yet."
+                        : "SaveLocker: couldn't reach the agent.",
+                    NotificationType.Info));
+                return;
+            }
+
+            SyncStatusDto status;
+            try { status = await client.GetSyncStatusAsync(tracked.Id).ConfigureAwait(true); }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "SaveLocker: couldn't check sync status for Resolve conflict");
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "savelocker-resolve-error-" + game.Id,
+                    "SaveLocker: couldn't reach the agent.", NotificationType.Error));
+                return;
+            }
+
+            if (!status.HasOpenConflict || !status.ConflictId.HasValue)
+            {
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "savelocker-resolve-none-" + game.Id,
+                    $"SaveLocker: \"{tracked.Name}\" has no open conflict.", NotificationType.Info));
+                return;
+            }
+
+            await ConflictResolver.ResolveInteractivelyAsync(PlayniteApi, client, tracked.Name, status.ConflictId.Value).ConfigureAwait(true);
         }
 
         public override void OnGameStarting(OnGameStartingEventArgs args)
