@@ -17,7 +17,10 @@ Two files staged under `docs/addon-submission/` — **not yet live, not yet subm
   hard dependency on a release existing and is genuinely ready to submit as-is.
 - `installer-manifest.yaml` — the version/package manifest the primary listing's
   `InstallerManifestUrl` will point at (`https://raw.githubusercontent.com/Marwanello/
-  SaveLocker-Playnite/master/installer.yaml`, once real). `RequiredApiVersion: 6.17.0` is not a guess
+  SaveLocker-Playnite/main/installer.yaml`, once real — corrected 2026-09-17 after checking this
+  repo's actual default branch is `main`, not `master`; the first draft had copied the wrong branch
+  name from the reference example, which happens to default to `master`). `RequiredApiVersion:
+  6.17.0` is not a guess
   — downloaded Playnite's own latest release (10.60) and read `Playnite.SDK.dll`'s real
   `FileVersion` directly. Confirmed this is a genuinely different number space from Playnite's own app
   version (10.60 the app; 6.17.0 the SDK) — the addon database's own real example

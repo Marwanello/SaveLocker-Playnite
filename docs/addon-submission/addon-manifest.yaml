@@ -19,7 +19,7 @@ Type: Generic
 Name: 'SaveLocker'
 Author: 'SkorcherX'
 ShortDescription: 'Pre-launch save sync gate for SaveLocker: pulls the newer save, or blocks on a genuine conflict, before a game starts — and pushes the moment it exits.'
-InstallerManifestUrl: https://raw.githubusercontent.com/Marwanello/SaveLocker-Playnite/master/installer.yaml
+InstallerManifestUrl: https://raw.githubusercontent.com/Marwanello/SaveLocker-Playnite/main/installer.yaml
 SourceUrl: https://github.com/Marwanello/SaveLocker-Playnite
 Description: |
     Gives SaveLocker (https://github.com/SkorcherX/SaveLocker) a genuine pre-launch save gate on
