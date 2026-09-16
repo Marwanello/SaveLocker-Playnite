@@ -42,6 +42,10 @@ namespace SaveLocker.Playnite
             this.settings = settings;
         }
 
+        // Lets callers that only hold a LocalApiClient (SyncNowAction, ConflictResolver) build a
+        // "open the agent at ___" message without each needing their own reference to Settings.
+        public string AgentUrl => settings().AgentUrl;
+
         /// <summary>
         /// <see cref="LocalAuth"/> (SaveLocker/src/Agent.Core/LocalAuth.cs) mints this once per
         /// machine-install beside config.json, 0600. Read fresh every call — it is a handful of

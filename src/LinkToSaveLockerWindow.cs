@@ -157,7 +157,7 @@ namespace SaveLocker.Playnite
             root.Children.Add(BuildConfirmFooter("Link", async () =>
             {
                 await client.SetAliasAsync(match.Id, playniteGame.Name).ConfigureAwait(true);
-                Finish("SaveLocker: linked \"" + playniteGame.Name + "\" to \"" + match.Name + "\".");
+                Finish("SaveLocker: linked \"" + playniteGame.Name + "\" to \"" + match.Name + "\".", match);
             }));
             root.Children.Add(BuildSecondaryLinks(new LinkOption("Pick a different tracked game instead", RenderPickTracked)));
             SetContent(root);
@@ -187,7 +187,9 @@ namespace SaveLocker.Playnite
                     return;
                 }
                 await BackfillAliasAsync(displayName).ConfigureAwait(true);
-                Finish("SaveLocker: now tracking \"" + displayName + "\".");
+                var games = await client.GetGamesAsync().ConfigureAwait(true);
+                var linked = games.FirstOrDefault(g => string.Equals(g.Name, displayName, StringComparison.OrdinalIgnoreCase));
+                Finish("SaveLocker: now tracking \"" + displayName + "\".", linked);
             }));
 
             root.Children.Add(BuildSecondaryLinks(
@@ -408,15 +410,31 @@ namespace SaveLocker.Playnite
             }
         }
 
-        private void Finish(string toastMessage)
+        // `linked` is the TrackedGameDto the player just linked to, so this can offer to sync it right
+        // away — same "linked, sync now?" dialog LinkAction shows after an automatic link, asked for
+        // so the manual tiers (search/browse/pick) end the same way as the automatic one instead of a
+        // toast that's easy to miss.
+        private void Finish(string message, TrackedGameDto linked)
         {
-            if (!string.IsNullOrEmpty(toastMessage))
-            {
-                api.Notifications.Add(new NotificationMessage(
-                    "savelocker-link-done-" + playniteGame.Id, toastMessage, NotificationType.Info));
-            }
             window.DialogResult = true;
             window.Close();
+
+            if (linked == null)
+            {
+                if (!string.IsNullOrEmpty(message))
+                {
+                    api.Notifications.Add(new NotificationMessage(
+                        "savelocker-link-done-" + playniteGame.Id, message, NotificationType.Info));
+                }
+                return;
+            }
+
+            LinkedTag.Ensure(api, playniteGame);
+
+            var choice = api.Dialogs.ShowMessage(
+                message + "\n\nSync now to pull the latest save?",
+                "SaveLocker — linked", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (choice == MessageBoxResult.Yes) _ = SyncNowAction.RunAsync(api, client, linked); // intentionally not awaited
         }
 
         // ---- Layout helpers (duplicated from ConflictResolveWindow rather than shared — this
