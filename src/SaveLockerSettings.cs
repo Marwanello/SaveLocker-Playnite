@@ -1,10 +1,42 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using Playnite.SDK;
 
 namespace SaveLocker.Playnite
 {
+    /// <summary>Reads this plugin's own version straight out of its installed <c>extension.yaml</c> —
+    /// the exact same file Playnite itself reads to load the plugin and the same one the addon-database
+    /// submission and self-update check (<see cref="SaveLockerPlugin"/>'s Phase 14 consumer) key off —
+    /// rather than a separately-maintained assembly version that could drift from it.</summary>
+    internal static class PluginVersion
+    {
+        public static string Current
+        {
+            get
+            {
+                try
+                {
+                    var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    var path = Path.Combine(dir ?? string.Empty, "extension.yaml");
+                    foreach (var line in File.ReadAllLines(path))
+                    {
+                        if (line.StartsWith("Version:", StringComparison.OrdinalIgnoreCase))
+                            return line.Substring("Version:".Length).Trim();
+                    }
+                }
+                catch
+                {
+                    // Fall through to "unknown" — a missing/unreadable extension.yaml shouldn't
+                    // crash the settings page over a display-only value.
+                }
+                return "unknown";
+            }
+        }
+    }
+
     /// <summary>
     /// Persisted via <c>Plugin.LoadPluginSettings/SavePluginSettings</c> — plain data only, no logic.
     /// <see cref="StateDir"/> exists purely for testenv (Group 5/Phase 15): the real installed agent
@@ -38,6 +70,8 @@ namespace SaveLocker.Playnite
             get { return connectionStatus; }
             private set { SetAndNotify(ref connectionStatus, value); }
         }
+
+        public string PluginVersionDisplay => "v" + PluginVersion.Current;
 
         public SaveLockerSettingsViewModel(SaveLockerPlugin plugin)
         {

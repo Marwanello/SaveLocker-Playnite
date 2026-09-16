@@ -19,10 +19,14 @@ namespace SaveLocker.Playnite
             var grid = new Grid { Margin = new Thickness(4) };
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(140) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            for (var i = 0; i < 4; i++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            for (var i = 0; i < 5; i++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-            AddRow(grid, 0, "Agent URL", CreateTextBox("AgentUrl"));
-            AddRow(grid, 1, "State directory", CreateTextBox("StateDir"));
+            var version = new TextBlock { Opacity = 0.85 };
+            version.SetBinding(TextBlock.TextProperty, new Binding("PluginVersionDisplay"));
+            AddRow(grid, 0, "Plugin version", version);
+
+            AddRow(grid, 1, "Agent URL", CreateTextBox("AgentUrl"));
+            AddRow(grid, 2, "State directory", CreateTextBox("StateDir"));
 
             var testButton = new Button
             {
@@ -32,13 +36,13 @@ namespace SaveLocker.Playnite
                 Margin = new Thickness(0, 8, 0, 4),
             };
             testButton.Click += (s, e) => viewModel.RefreshConnectionStatus();
-            Grid.SetRow(testButton, 2);
+            Grid.SetRow(testButton, 3);
             Grid.SetColumn(testButton, 1);
             grid.Children.Add(testButton);
 
             var status = new TextBlock { TextWrapping = TextWrapping.Wrap, Opacity = 0.85 };
             status.SetBinding(TextBlock.TextProperty, new Binding("ConnectionStatus"));
-            Grid.SetRow(status, 3);
+            Grid.SetRow(status, 4);
             Grid.SetColumn(status, 1);
             grid.Children.Add(status);
 
