@@ -10,6 +10,18 @@ Needs Playnite actually installed (`Playnite.SDK.dll` is referenced from
 `%LocalAppData%\Playnite`, not NuGet — `docs/Gotchas.md`). Output lands at
 `src\bin\Release\net462\`, `extension.yaml` copied alongside the DLL automatically.
 
+## Automated tests (Phase 15)
+
+```powershell
+dotnet test tests\SaveLocker.Playnite.Tests\SaveLocker.Playnite.Tests.csproj -c Release
+```
+
+Also needs Playnite installed (same `Playnite.SDK.dll` HintPath as `src/`), but touches nothing else
+real — `GameMatcherTests` is pure logic, `LocalApiClientTests` talks only to an in-process
+`HttpListener` stub, never the real agent. This is the automated half of Phase 15's coverage; it does
+not replace the manual walkthrough below, which is the only thing that proves `OnGameStarting` really
+fires and really blocks inside a real, running Playnite.
+
 ## Pack into a `.pext`
 
 `Toolbox.exe pack` is broken on this dev box (missing `NLog.dll` — `docs/Gotchas.md`). Zip manually:

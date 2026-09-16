@@ -44,4 +44,11 @@
     </None>
   </ItemGroup>
 
+  <!-- tasks/playnite-plugin/plan.md, Phase 15: lets ../tests/SaveLocker.Playnite.Tests exercise
+       GameMatcher/LocalApiClient/Contracts directly instead of duplicating them as public types just
+       for testability. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SaveLocker.Playnite.Tests" />
+  </ItemGroup>
+
 </Project>

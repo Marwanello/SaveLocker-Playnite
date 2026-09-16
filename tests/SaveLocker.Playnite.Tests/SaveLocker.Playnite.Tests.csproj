@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net462</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Same reasoning as SaveLocker.Playnite.csproj: dotnet build needs this to resolve net462
+       reliably regardless of what's globally installed (docs/Gotchas.md). -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SaveLocker.Playnite.csproj" />
+    <!-- A ProjectReference does not flow the main project's own HintPath <Reference> transitively,
+         so this project needs its own copy — same real-install constraint, no new one. docs/Gotchas.md.
+         Private=true (the default) here, unlike the main project's own Private=false: a live Playnite
+         host supplies the DLL to the SHIPPED plugin at runtime, but nothing supplies it to this
+         standalone test executable, so it must be copied alongside the test binaries instead. -->
+    <Reference Include="Playnite.SDK">
+      <HintPath>$(LocalAppData)\Playnite\Playnite.SDK.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

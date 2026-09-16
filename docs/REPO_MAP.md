@@ -60,6 +60,17 @@ SaveLocker-Playnite/
 │                                   #   docs/Gotchas.md).
 ├── dist/SaveLocker.pext            # Hand-packed (Toolbox.exe is broken here — docs/Gotchas.md).
 │                                   #   Gitignored; rebuild with docs/Build and Run.md's pack step.
+├── tests/SaveLocker.Playnite.Tests/ # Phase 15: xUnit, net462. GameMatcherTests (pure logic, no
+│   │                               #   Playnite host needed — the Steam-AppID tier is the one
+│   │                               #   deliberate gap, see its own doc comment) and
+│   │                               #   LocalApiClientTests (an HttpListener-backed stub of the
+│   │                               #   agent's local API — token header, JSON parsing, the
+│   │                               #   tolerateConflict 409 split). `dotnet test
+│   │                               #   tests\SaveLocker.Playnite.Tests\SaveLocker.Playnite.Tests.csproj`.
+│   │                               #   Needs the real installed Playnite too (Playnite.SDK.dll,
+│   │                               #   same as `src/`) — this is the automated half of Phase 15;
+│   │                               #   the manual/hardware half is docs/Build and Run.md's own
+│   │                               #   walkthrough, which nothing here replaces.
 ├── scripts/Install-ToPortable.ps1  # Build + copy straight into <PlaynitePath>\Extensions\SaveLocker
 │                                   #   for any Playnite install root, portable or real — skips the
 │                                   #   .pext pack/install round trip. docs/Build and Run.md.
