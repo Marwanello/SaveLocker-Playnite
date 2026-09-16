@@ -89,7 +89,7 @@ namespace SaveLocker.Playnite
                 var isSteam = string.Equals(playniteGame.Source?.Name, "Steam", StringComparison.OrdinalIgnoreCase);
                 var steamAppId = isSteam && uint.TryParse(playniteGame.GameId, out _) ? playniteGame.GameId : null;
                 var result = await client.CandidatesLookupAsync(
-                    name, playniteGame.InstallDirectory, steamAppId, MapStore(playniteGame.Source?.Name)).ConfigureAwait(true);
+                    name, playniteGame.InstallDirectory, steamAppId, GameMatcher.MapStore(playniteGame.Source?.Name)).ConfigureAwait(true);
                 pendingCandidateId = result.Id;
                 var displayName = result.CandidateName ?? name;
 
@@ -186,9 +186,13 @@ namespace SaveLocker.Playnite
                         () => RenderConfirmEnroll(displayName, savePath, candidateId));
                     return;
                 }
-                await BackfillAliasAsync(displayName).ConfigureAwait(true);
+                // By PATH, not by displayName — the server names the tracked game after the
+                // manifest's canonical spelling when one resolves (Enroller.EnrollAsync), which is
+                // often not displayName (the name this screen searched with). See
+                // GameMatcher.FindByPathOrName's own doc comment.
                 var games = await client.GetGamesAsync().ConfigureAwait(true);
-                var linked = games.FirstOrDefault(g => string.Equals(g.Name, displayName, StringComparison.OrdinalIgnoreCase));
+                var linked = GameMatcher.FindByPathOrName(games, savePath, displayName);
+                await BackfillAliasAsync(linked).ConfigureAwait(true);
                 Finish("SaveLocker: now tracking \"" + displayName + "\".", linked);
             }));
 
@@ -390,19 +394,19 @@ namespace SaveLocker.Playnite
             }
         }
 
-        private async Task BackfillAliasAsync(string candidateName)
+        private async Task BackfillAliasAsync(TrackedGameDto linked)
         {
-            // Only needed when the enrolled name differs from Playnite's own title — e.g. a manifest
-            // pick ("Sid Meier's Civilization VII" for Playnite's "Civ VII"). Without this, tier 3's
+            // Only needed when the tracked game's SERVER-SIDE name differs from Playnite's own title
+            // — e.g. a manifest pick ("Sid Meier's Civilization VII" for Playnite's "Civ VII").
+            // Compares against `linked.Name` (what the server actually stored), not the name this
+            // screen searched with — those two can differ even when nothing was manually picked,
+            // since Enroller.EnrollAsync prefers the manifest's own spelling. Without this, tier 3's
             // name/Alias matching would never recognise this game on a future launch, silently undoing
             // the whole point of linking it.
-            if (string.Equals(candidateName, playniteGame.Name, StringComparison.OrdinalIgnoreCase)) return;
+            if (linked == null || string.Equals(linked.Name, playniteGame.Name, StringComparison.OrdinalIgnoreCase)) return;
             try
             {
-                var games = await client.GetGamesAsync().ConfigureAwait(true);
-                var created = games.FirstOrDefault(g => string.Equals(g.Name, candidateName, StringComparison.OrdinalIgnoreCase));
-                if (created != null)
-                    await client.SetAliasAsync(created.Id, playniteGame.Name).ConfigureAwait(true);
+                await client.SetAliasAsync(linked.Id, playniteGame.Name).ConfigureAwait(true);
             }
             catch (Exception ex)
             {
@@ -560,16 +564,6 @@ namespace SaveLocker.Playnite
             button.SetResourceReference(Control.BackgroundProperty, "PopupBackgroundBrush");
             button.SetResourceReference(Control.BorderBrushProperty, "PopupBorderBrush");
             button.BorderThickness = new Thickness(1);
-        }
-
-        private static string MapStore(string sourceName)
-        {
-            if (string.IsNullOrWhiteSpace(sourceName)) return null;
-            if (sourceName.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0) return "Steam";
-            if (sourceName.IndexOf("gog", StringComparison.OrdinalIgnoreCase) >= 0) return "Gog";
-            if (sourceName.IndexOf("epic", StringComparison.OrdinalIgnoreCase) >= 0) return "Epic";
-            if (sourceName.IndexOf("amazon", StringComparison.OrdinalIgnoreCase) >= 0) return "Amazon";
-            return null;
         }
 
         // The agent's error responses are a plain {"error":"..."} JSON body, but LocalApiClient throws

@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Playnite.SDK;
 using Playnite.SDK.Models;
@@ -33,10 +32,12 @@ namespace SaveLocker.Playnite
                 progressId, "SaveLocker: linking \"" + game.Name + "\"…", NotificationType.Info));
 
             TrackedGameDto linked = null;
+            var alreadyLinked = false;
             try
             {
                 var tracked = await client.GetGamesAsync().ConfigureAwait(true);
                 linked = GameMatcher.FindMatch(game, tracked);
+                alreadyLinked = linked != null;
                 if (linked == null)
                     linked = await TryAutomaticEnrollAsync(client, game).ConfigureAwait(true);
             }
@@ -52,7 +53,22 @@ namespace SaveLocker.Playnite
             if (linked != null)
             {
                 LinkedTag.Ensure(api, game);
-                OfferSync(api, client, linked);
+                if (alreadyLinked)
+                {
+                    // A genuine no-op — game.Name was already matched to `linked` before this click
+                    // did anything. A lightweight toast, not the "sync now?" dialog OfferSync shows
+                    // for an actually-new link, so right-clicking Link on an already-synced game
+                    // (the menu item has no enabled/disabled state the way the button does) doesn't
+                    // nag with the same Yes/No prompt every time.
+                    api.Notifications.Add(new NotificationMessage(
+                        "savelocker-already-linked-" + game.Id,
+                        "SaveLocker: \"" + game.Name + "\" is already linked to \"" + linked.Name + "\".",
+                        NotificationType.Info));
+                }
+                else
+                {
+                    OfferSync(api, client, linked);
+                }
             }
             else
             {
@@ -62,11 +78,18 @@ namespace SaveLocker.Playnite
 
         private static void OfferSync(IPlayniteAPI api, LocalApiClient client, TrackedGameDto tracked)
         {
-            var choice = api.Dialogs.ShowMessage(
-                "SaveLocker is now linked to \"" + tracked.Name + "\".\n\nSync now to pull the latest save?",
-                "SaveLocker — linked", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Information);
-            if (choice == System.Windows.MessageBoxResult.Yes)
-                _ = SyncNowAction.RunAsync(api, client, tracked); // intentionally not awaited — runs in the background
+            try
+            {
+                var choice = api.Dialogs.ShowMessage(
+                    "SaveLocker is now linked to \"" + tracked.Name + "\".\n\nSync now to pull the latest save?",
+                    "SaveLocker — linked", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Information);
+                if (choice == System.Windows.MessageBoxResult.Yes)
+                    _ = SyncNowAction.RunAsync(api, client, tracked); // intentionally not awaited — runs in the background
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "SaveLocker: couldn't show the linked/sync dialog");
+            }
         }
 
         /// <summary>
@@ -81,29 +104,32 @@ namespace SaveLocker.Playnite
             var isSteam = string.Equals(game.Source?.Name, "Steam", StringComparison.OrdinalIgnoreCase);
             var steamAppId = isSteam && uint.TryParse(game.GameId, out _) ? game.GameId : null;
             var lookup = await client.CandidatesLookupAsync(
-                game.Name, game.InstallDirectory, steamAppId, MapStore(game.Source?.Name)).ConfigureAwait(false);
+                game.Name, game.InstallDirectory, steamAppId, GameMatcher.MapStore(game.Source?.Name)).ConfigureAwait(false);
             if (!lookup.Resolved) return null;
 
             var enrolled = await client.EnrollAsync(lookup.Id).ConfigureAwait(false);
             if (enrolled.Enrolled < 1) return null;
 
-            var displayName = lookup.CandidateName ?? game.Name;
+            // Find the game the enroll above just created by its save-directory PATH, not by name —
+            // the server names it after the manifest's canonical spelling when one resolves
+            // (Enroller.EnrollAsync), which commonly differs from game.Name (the search query this
+            // lookup used), so a name-based search here would silently miss a genuinely successful
+            // enroll. See GameMatcher.FindByPathOrName's own doc comment for the full reasoning.
+            var refreshed = await client.GetGamesAsync().ConfigureAwait(false);
+            var linked = GameMatcher.FindByPathOrName(refreshed, lookup.SuggestedPath, lookup.CandidateName ?? game.Name);
+
             // Same alias backfill LinkToSaveLockerWindow.BackfillAliasAsync does, inlined rather than
             // shared — that method is private to a window built around a different (interactive)
-            // control flow, and this is the same two calls from a different entry point.
-            if (!string.Equals(displayName, game.Name, StringComparison.OrdinalIgnoreCase))
+            // control flow, and this is the same one call from a different entry point. Compares
+            // against the SERVER's actual name for `linked` (not the search query above), since that
+            // is what may have diverged from game.Name in the first place.
+            if (linked != null && !string.Equals(linked.Name, game.Name, StringComparison.OrdinalIgnoreCase))
             {
-                try
-                {
-                    var games = await client.GetGamesAsync().ConfigureAwait(false);
-                    var created = games.FirstOrDefault(g => string.Equals(g.Name, displayName, StringComparison.OrdinalIgnoreCase));
-                    if (created != null) await client.SetAliasAsync(created.Id, game.Name).ConfigureAwait(false);
-                }
+                try { await client.SetAliasAsync(linked.Id, game.Name).ConfigureAwait(false); }
                 catch (Exception ex) { Logger.Warn(ex, "SaveLocker: couldn't backfill alias after automatic enroll"); }
             }
 
-            var refreshed = await client.GetGamesAsync().ConfigureAwait(false);
-            return refreshed.FirstOrDefault(g => string.Equals(g.Name, displayName, StringComparison.OrdinalIgnoreCase));
+            return linked;
         }
 
         private static void ShowPopup(IPlayniteAPI api, LocalApiClient client, Game game)
@@ -122,16 +148,6 @@ namespace SaveLocker.Playnite
             {
                 Logger.Error(ex, "SaveLocker: link popup failed to open");
             }
-        }
-
-        private static string MapStore(string sourceName)
-        {
-            if (string.IsNullOrWhiteSpace(sourceName)) return null;
-            if (sourceName.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0) return "Steam";
-            if (sourceName.IndexOf("gog", StringComparison.OrdinalIgnoreCase) >= 0) return "Gog";
-            if (sourceName.IndexOf("epic", StringComparison.OrdinalIgnoreCase) >= 0) return "Epic";
-            if (sourceName.IndexOf("amazon", StringComparison.OrdinalIgnoreCase) >= 0) return "Amazon";
-            return null;
         }
     }
 }

@@ -48,6 +48,46 @@ namespace SaveLocker.Playnite
             return null;
         }
 
+        /// <summary>
+        /// Finds the game a just-completed enroll created, preferring its save-directory <paramref
+        /// name="path"/> over <paramref name="name"/> — the server names a newly-tracked game after
+        /// the manifest's canonical spelling when one resolves (Enroller.EnrollAsync: "the MANIFEST's
+        /// spelling, not the shortcut's, is the server-side identity"), which is frequently NOT the
+        /// name a Playnite-side lookup searched with (e.g. Playnite's "Civ VII" vs. the manifest's
+        /// "Sid Meier's Civilization VII"). A name-only lookup right after enrolling would then find
+        /// nothing despite the enroll having genuinely succeeded. The save directory the candidate
+        /// resolved to is not rewritten that way, so it is the reliable signal; name is only a
+        /// fallback for a caller that has no path to check.
+        /// </summary>
+        public static TrackedGameDto FindByPathOrName(IList<TrackedGameDto> tracked, string path, string name)
+        {
+            if (tracked == null) return null;
+
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                var normalizedPath = NormalizeDir(path);
+                var byPath = tracked.FirstOrDefault(t => !string.IsNullOrWhiteSpace(t.Path) && NormalizeDir(t.Path) == normalizedPath);
+                if (byPath != null) return byPath;
+            }
+
+            return !string.IsNullOrWhiteSpace(name)
+                ? tracked.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.OrdinalIgnoreCase))
+                : null;
+        }
+
+        /// <summary>Caller-supplied Playnite source name to the agent's <c>GameStore</c> string —
+        /// shared by every caller that resolves a candidate (LinkAction, LinkToSaveLockerWindow)
+        /// rather than each keeping its own copy.</summary>
+        public static string MapStore(string sourceName)
+        {
+            if (string.IsNullOrWhiteSpace(sourceName)) return null;
+            if (sourceName.IndexOf("steam", StringComparison.OrdinalIgnoreCase) >= 0) return "Steam";
+            if (sourceName.IndexOf("gog", StringComparison.OrdinalIgnoreCase) >= 0) return "Gog";
+            if (sourceName.IndexOf("epic", StringComparison.OrdinalIgnoreCase) >= 0) return "Epic";
+            if (sourceName.IndexOf("amazon", StringComparison.OrdinalIgnoreCase) >= 0) return "Amazon";
+            return null;
+        }
+
         private static string NormalizeDir(string path)
         {
             return path.TrimEnd('\\', '/').ToLowerInvariant();
