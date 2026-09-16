@@ -108,38 +108,35 @@ namespace SaveLocker.Playnite
             };
         }
 
-        // "Sync now" from the right-click menu — a game not yet linked gets a toast pointing at
-        // "Link to SaveLocker" instead of silently doing nothing, since this item has no way to hide
-        // itself per-game (see GetGameMenuItems' own doc comment on why the list can't check state
-        // first).
+        // "Sync now" from the right-click menu — a game not yet linked offers to link it instead of
+        // silently doing nothing, since this item has no way to hide itself per-game (see
+        // GetGameMenuItems' own doc comment on why the list can't check state first). A dialog, not a
+        // notification: asked for directly — a toast is easy to miss and gives no instant feedback,
+        // where a modal is impossible to miss and blocks exactly long enough to read.
         private async Task RunSyncNowAsync(Game game)
         {
             var tracked = FindMatch(game, out var agentReachable);
             if (tracked != null) { await SyncNowAction.RunAsync(PlayniteApi, client, tracked).ConfigureAwait(true); return; }
 
-            PlayniteApi.Notifications.Add(new NotificationMessage(
-                "savelocker-syncnow-unlinked-" + game.Id,
-                agentReachable
-                    ? $"SaveLocker: \"{game.Name}\" isn't linked yet — use \"Link to SaveLocker\" first."
-                    : "SaveLocker: couldn't reach the agent.",
-                NotificationType.Info));
+            if (!agentReachable) { ShowAgentUnreachableDialog(); return; }
+            await OfferLinkAsync(game).ConfigureAwait(true);
         }
 
         // "Resolve conflict…" from the right-click menu — reads the game's current sync-status rather
         // than running a fresh pre-launch-sync, since the point of this item is jumping straight to an
         // ALREADY-confirmed conflict without re-triggering a sync cycle (SyncEngine.GetSyncStatusAsync
         // is a cheap, no-download comparison; see LocalApiClient.GetSyncStatusAsync's own doc comment).
+        // Every outcome is a dialog, not a notification — same reasoning as RunSyncNowAsync above: an
+        // unlinked game says so (with the same Link/Cancel offer), an already-linked game with nothing
+        // open says "No conflicts found" rather than staying silent, so the player always gets an
+        // immediate, unmissable answer to "what happened" instead of having to notice a toast.
         private async Task RunResolveConflictAsync(Game game)
         {
             var tracked = FindMatch(game, out var agentReachable);
             if (tracked == null)
             {
-                PlayniteApi.Notifications.Add(new NotificationMessage(
-                    "savelocker-resolve-unlinked-" + game.Id,
-                    agentReachable
-                        ? $"SaveLocker: \"{game.Name}\" isn't linked yet."
-                        : "SaveLocker: couldn't reach the agent.",
-                    NotificationType.Info));
+                if (!agentReachable) { ShowAgentUnreachableDialog(); return; }
+                await OfferLinkAsync(game).ConfigureAwait(true);
                 return;
             }
 
@@ -148,21 +145,42 @@ namespace SaveLocker.Playnite
             catch (Exception ex)
             {
                 Logger.Warn(ex, "SaveLocker: couldn't check sync status for Resolve conflict");
-                PlayniteApi.Notifications.Add(new NotificationMessage(
-                    "savelocker-resolve-error-" + game.Id,
-                    "SaveLocker: couldn't reach the agent.", NotificationType.Error));
+                ShowAgentUnreachableDialog();
                 return;
             }
 
             if (!status.HasOpenConflict || !status.ConflictId.HasValue)
             {
-                PlayniteApi.Notifications.Add(new NotificationMessage(
-                    "savelocker-resolve-none-" + game.Id,
-                    $"SaveLocker: \"{tracked.Name}\" has no open conflict.", NotificationType.Info));
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"No conflicts found for \"{tracked.Name}\".",
+                    "SaveLocker — resolve conflict", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
                 return;
             }
 
             await ConflictResolver.ResolveInteractivelyAsync(PlayniteApi, client, tracked.Name, status.ConflictId.Value).ConfigureAwait(true);
+        }
+
+        // Shared by both menu items above: "this game isn't linked yet" with a Link button that runs
+        // the same automatic match/enroll-then-fallback-to-picker chain the "Link to SaveLocker" menu
+        // item itself uses, and a Cancel button that does nothing. MessageBoxOption's own Title is the
+        // literal button text — this is a genuine two-button choice, not a MessageBoxButton preset
+        // (OK/Cancel, Yes/No, …), because neither preset's wording fits "Link".
+        private async Task OfferLinkAsync(Game game)
+        {
+            var link = new MessageBoxOption("Link", true, false);
+            var cancel = new MessageBoxOption("Cancel", false, true);
+            var choice = PlayniteApi.Dialogs.ShowMessage(
+                $"\"{game.Name}\" isn't linked to SaveLocker yet.",
+                "SaveLocker — not linked", System.Windows.MessageBoxImage.Information, new List<MessageBoxOption> { link, cancel });
+            if (choice == link)
+                await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
+        }
+
+        private void ShowAgentUnreachableDialog()
+        {
+            PlayniteApi.Dialogs.ShowMessage(
+                "SaveLocker: couldn't reach the agent.",
+                "SaveLocker", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
         }
 
         public override void OnGameStarting(OnGameStartingEventArgs args)
