@@ -76,9 +76,16 @@ SaveLocker-Playnite/
 │                                   #   .pext pack/install round trip. docs/Build and Run.md.
 ├── docs/                           # This small vault. CONTEXT.md + REPO_MAP.md + Gotchas.md +
 │                                   #   Build and Run.md + logs/ — see AGENTS.md for when to read each.
-├── .github/workflows/              # Empty for now — no CI here yet (nothing to build headlessly
-│                                   #   verify beyond `dotnet build`; real verification is manual,
-│                                   #   hardware-only, per the main repo's plan.md).
+├── .github/workflows/release.yml   # Phase 17: on a v* tag, fetches Playnite.SDK.dll from Playnite's
+│                                   #   own portable release (not published to NuGet — docs/Gotchas.md),
+│                                   #   builds, zips extension.yaml + the DLL as SaveLocker.zip (also
+│                                   #   published as SaveLocker.pext for a human installer), and
+│                                   #   publishes both plus SHA256SUMS.txt — the exact filenames
+│                                   #   AgentInstallerService.cs's PlaynitePlugin slot and
+│                                   #   VerifyHashAsync (main repo) expect. Nothing else here runs in
+│                                   #   CI — a real Playnite install is still needed for `dotnet build`/
+│                                   #   `dotnet test` locally, and real verification stays manual,
+│                                   #   hardware-only, per the main repo's plan.md.
 ├── AGENTS.md · .agents/AGENTS.md · CLAUDE.md   # Agent instructions
 ├── LICENSE                         # PolyForm Noncommercial 1.0.0, same as SaveLocker/SaveLocker-Decky
 └── README.md

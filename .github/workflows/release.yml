@@ -1,0 +1,81 @@
+name: Build and release the Playnite plugin
+
+on:
+  push:
+    tags: ['v*']
+
+# Actions are pinned to full commit SHAs, not tags, mirroring the main SaveLocker repo's own
+# release.yml — a tag is a moving pointer the action's owner can repoint at any time, and this
+# workflow produces the exact zip the agent's self-updater (tasks/playnite-plugin/plan.md, Phase 7)
+# downloads and unpacks unattended.
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # needed to create the GitHub Release
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Playnite does not publish Playnite.SDK to NuGet (docs/Gotchas.md) — the csproj's HintPath
+      # expects it at the same %LocalAppData%\Playnite\Playnite.SDK.dll a real install puts it at, so
+      # this fetches it the same way a dev machine does: Playnite's own portable release, which is a
+      # flat .7z with Playnite.SDK.dll at its root (confirmed 2026-09-16 against the real 10.60 asset —
+      # `7z l` was checked before writing this, not assumed). windows-latest ships 7-Zip; installed
+      # explicitly anyway so this step never silently depends on runner-image contents that could
+      # change.
+      - name: Fetch Playnite.SDK.dll
+        shell: pwsh
+        run: |
+          choco install 7zip -y --no-progress | Out-Null
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/JosefNemec/Playnite/releases/latest" -Headers @{ "User-Agent" = "SaveLocker-Playnite-CI" }
+          $asset = $release.assets | Where-Object { $_.name -like "*.7z" } | Select-Object -First 1
+          if (-not $asset) { throw "No .7z portable asset found on the latest Playnite release." }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile playnite-portable.7z
+          $sdkDir = "$env:LocalAppData\Playnite"
+          New-Item -ItemType Directory -Force $sdkDir | Out-Null
+          & 7z e playnite-portable.7z Playnite.SDK.dll "-o$sdkDir" -y
+          if (-not (Test-Path "$sdkDir\Playnite.SDK.dll")) { throw "Playnite.SDK.dll was not extracted." }
+
+      - name: Build
+        run: dotnet build src\SaveLocker.Playnite.csproj -c Release
+
+      # Same shape release.yml's own Decky-mirroring convention already established (SaveLocker-Decky's
+      # own release asset is "SaveLocker.zip") — AgentInstallerService.cs's PlaynitePlugin slot matches
+      # a release asset that starts with "SaveLocker" and ends with ".zip", so the auto-update filename
+      # is not a style choice, it is load-bearing. A .pext copy is also published, identical bytes,
+      # for a human who wants to double-click-install instead (docs/tasks/playnite-plugin/plan.md's
+      # own installation section) — .pext never matches the slot's ".zip" filter, so publishing both
+      # creates no ambiguity for the poller.
+      - name: Package
+        shell: pwsh
+        run: |
+          $src = "src\bin\Release\net462"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path "$src\extension.yaml", "$src\SaveLocker.Playnite.dll" -DestinationPath dist\SaveLocker.zip -Force
+          Copy-Item dist\SaveLocker.zip dist\SaveLocker.pext -Force
+
+      # A checksum the user can verify by hand, AND the exact contract
+      # AgentInstallerService.VerifyHashAsync reads back from this same release to confirm the copy the
+      # server hosts matches what this workflow actually published (Program.cs's own comment on that
+      # route). The filename inside must be "SaveLocker.zip" verbatim — that is what VerifyHashAsync
+      # looks up info.FileName against.
+      - name: Checksum
+        shell: bash
+        run: |
+          cd dist
+          sha256sum SaveLocker.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
+        with:
+          files: |
+            dist/SaveLocker.zip
+            dist/SaveLocker.pext
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
