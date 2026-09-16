@@ -38,16 +38,30 @@ Playnite-only game surfaces in Add Games without this plugin ever being installe
 "Playnite plugin" suggest/install card. Branch `claude/playnite-group6-phase17-82e72b`. Unrelated to
 this repo's own build, mentioned here only so the next session doesn't re-derive that they exist.
 
-**What actually still blocks the PR now — not the release anymore, that part is done and verified:**
-this plugin has never been loaded into a real, running Playnite (see Group 5's and Group 3's own notes
-below — "builds clean" is the status of every phase, hardware-verified is the status of none since
-Group 3). The add-on database's own bar is "submit something that functions, not a scaffold" — a
-listing this plugin has never actually been proven to work from inside Playnite would not honestly
-clear that bar yet, tag or no tag.
+**Update 2026-09-17 — the plugin loads for real, through `testenv.ps1`, for the first time.** Per a
+standing instruction to always use the main repo's `tests/testenv.ps1` for manual verification (not
+ad-hoc scratch daemons), ran `testenv.ps1 build`/`up -PlaynitePath` against this machine's own real
+portable instance (`D:\Projects\SaveLocker\Playnite-Test` — true portable mode, its own real library).
+That surfaced a genuine third bug: `PlayniteLibrary`/`PlaynitePlugin` (agent-side, main repo) only
+ever checked `%AppData%\Playnite`, which a portable install never uses — fixed there with a
+`SAVELOCKER_PLAYNITE_PATH` override `testenv.ps1 -PlaynitePath` now sets automatically. With that
+fixed: `testenv.ps1` built this plugin from the `playnite-plugin-group-6` worktree, installed it into
+`Playnite-Test`, and restarting Playnite loaded it cleanly —
+`ExtensionFactory:Loaded plugin: SaveLocker, version 0.1.0` in Playnite's own `playnite.log`. This is
+the first confirmed load of an actual tagged release build (v0.1.0), not just a local dev build.
+**Still not done**: the actual manual click-through (pre-launch conflict gate, right-click menu items,
+Link to SaveLocker popup) — loading cleanly is necessary but not sufficient to clear the add-on
+database's "must function, not a scaffold" bar.
+
+**What actually still blocks the PR now — not the release, and not "does it load" anymore, both
+verified:** the full manual click-through above has never been run (see Group 5's and Group 3's own
+notes below for the exact walkthrough — `docs/Build and Run.md`'s "Manual verification, step by
+step").
 
 **Whoever picks this up next:**
-1. Hardware-verify the plugin end to end against a real portable Playnite + test agent — the same
-   gate Group 5's own notes below already call out, now the ONLY remaining one for Phase 16.
+1. Run the full manual click-through against `Playnite-Test` + `testenv.ps1`'s test agent (already
+   up and connected as of 2026-09-17) — the same gate Group 5's own notes below already call out, now
+   the ONLY remaining one for Phase 16.
 2. (Optional but worth doing first) Exercise the agent's self-update path against this real v0.1.0
    release — host it in the main SaveLocker server's Agent Updates config
    (`playnite-plugin` row) and confirm `PlaynitePlugin.CheckAsync`/`InstallFirstTimeAsync` can
