@@ -10,12 +10,12 @@ namespace SaveLocker.Playnite
     /// Marks a Playnite game as SaveLocker-enrolled the only way the SDK actually supports showing
     /// that generically across themes: a Tag. There is no per-game grid/list icon extension point in
     /// the Playnite SDK at all (checked every method on the Plugin base class) — GetGameViewControl
-    /// (LinkStatusButton's "✓ Synced" button) is the SDK's only per-game visual hook, it only ever
-    /// appears on the details page, and even there only under themes whose XAML wires it in (Harmony,
-    /// used for this project's own hardware verification, does not — nor does it bind to Tags anywhere
-    /// in its own XAML, confirmed by inspection). Tags still make linked games filterable/searchable
-    /// from Playnite's own sidebar regardless of theme, and will render as visible chips under most
-    /// other themes if the active one ever changes.
+    /// was the SDK's only per-game visual hook, and a status control built on it was removed again:
+    /// it only ever appears on the details page, and only under themes whose XAML wires a matching
+    /// slot in (no stock theme does, Harmony or Default included, confirmed against Playnite's own
+    /// source — nor does Harmony bind to Tags anywhere in its own XAML, confirmed by inspection).
+    /// Tags still make linked games filterable/searchable from Playnite's own sidebar regardless of
+    /// theme, and will render as visible chips under most other themes if the active one ever changes.
     /// </summary>
     internal static class LinkedTag
     {

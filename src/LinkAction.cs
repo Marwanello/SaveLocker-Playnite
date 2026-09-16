@@ -6,10 +6,12 @@ using Playnite.SDK.Models;
 namespace SaveLocker.Playnite
 {
     /// <summary>
-    /// The "click and link" action shared by <see cref="LinkStatusButton"/> (GetGameViewControl —
-    /// theme-dependent, see its own doc comment) and <see cref="SaveLockerPlugin.GetGameMenuItems"/>
-    /// (the right-click menu — works regardless of theme, since Playnite owns that menu itself
-    /// rather than handing rendering to the theme's own XAML). Tries the same automatic match/resolve
+    /// The "click and link" action behind <see cref="SaveLockerPlugin.GetGameMenuItems"/>'s "Link to
+    /// SaveLocker" item — the reliable, theme-independent surface, since Playnite owns that menu
+    /// itself rather than handing rendering to the theme's own XAML. (A GetGameViewControl-based
+    /// button also called into this action, but was removed: no stock theme's XAML ever renders it —
+    /// see the comment above <see cref="SaveLockerPlugin.GetGameMenuItems"/> for why.) Tries the same
+    /// automatic match/resolve
     /// chain <see cref="LinkToSaveLockerWindow"/> runs for tiers 1-2 and enrolls immediately with no
     /// extra confirmation click if that resolves a save folder; only falls back to the full popup
     /// (manual search/browse/pick) when it doesn't.

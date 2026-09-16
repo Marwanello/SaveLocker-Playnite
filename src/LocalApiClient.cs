@@ -123,10 +123,10 @@ namespace SaveLocker.Playnite
             await SendAsync<object>(HttpMethod.Post, $"/api/games/{gameId}/post-exit-sync", new { }, o => null, ct, tolerateConflict: true, timeout: TimeSpan.FromMinutes(10)).ConfigureAwait(false);
         }
 
-        // Powers the status chip (GameStatusControl / tasks/playnite-plugin/plan.md's "Game page"
-        // section): a cheap, no-download comparison of the local save against the cloud head, plus
-        // whether an open conflict already exists so the chip can offer "Resolve conflict" without a
-        // fresh pre-launch-sync round trip.
+        // Powers SaveLockerPlugin's "Resolve conflict…" dialog (tasks/playnite-plugin/plan.md's "Game
+        // page" section): a cheap, no-download comparison of the local save against the cloud head,
+        // plus whether an open conflict already exists, so the menu item can state "no conflicts
+        // found" or open the real resolve window without a fresh pre-launch-sync round trip.
         public async Task<SyncStatusDto> GetSyncStatusAsync(Guid gameId, CancellationToken ct = default(CancellationToken))
         {
             return await SendAsync(HttpMethod.Get, $"/api/games/{gameId}/sync-status", null, o => SyncStatusDto.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);

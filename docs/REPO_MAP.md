@@ -20,21 +20,20 @@ SaveLocker-Playnite/
 │   │                               #   rules — calls LocalApiClient and acts on the LaunchDecision it
 │   │                               #   gets back, fail-open except on Blocked.
 │   ├── GameMatcher.cs              # Phase 11: Steam AppID → InstallDir → name/Alias chain.
-│   ├── GameStatusControl.cs        # Phase 13's GetGameViewControl: status chip (Not linked / Agent
-│   │                               #   offline / Not synced yet / In sync / Conflict) + one action
-│   │                               #   button. Theme-dependent — see its own doc comment.
-│   ├── LinkAction.cs               # The "click and link" chain shared by GameStatusControl and the
-│   │                               #   right-click menu: try automatic match/enroll first, fall back
-│   │                               #   to LinkToSaveLockerWindow only when nothing resolves.
+│   ├── LinkAction.cs               # The "click and link" chain behind the right-click menu: try
+│   │                               #   automatic match/enroll first, fall back to LinkToSaveLockerWindow
+│   │                               #   only when nothing resolves. (A GetGameViewControl status-chip
+│   │                               #   control, GameStatusControl, called into this too but was removed
+│   │                               #   — see SaveLockerPlugin.cs's comment above GetGameMenuItems.)
 │   ├── LinkedTag.cs                # Marks a linked game with a "SaveLocker: Linked" Tag — the one
 │   │                               #   theme-independent per-game visual hook the SDK actually has.
 │   ├── SyncNowAction.cs            # "Sync now": runs the same pre-launch-sync gate OnGameStarting
 │   │                               #   does, as a toast-driven on-demand action instead of a launch
-│   │                               #   block. Shared by LinkAction's post-link offer, GameStatusControl,
-│   │                               #   and the right-click menu.
+│   │                               #   block. Shared by LinkAction's post-link offer and the right-click
+│   │                               #   menu.
 │   ├── ConflictResolver.cs         # The interactive "this device / the cloud" flow shared by
-│   │                               #   OnGameStarting (blocking), SyncNowAction/GameStatusControl/the
-│   │                               #   right-click menu (non-blocking async overload).
+│   │                               #   OnGameStarting (blocking) and SyncNowAction/the right-click menu
+│   │                               #   (non-blocking async overload).
 │   ├── LocalApiClient.cs           # HttpClient wrapper for the agent's local API (:5178). Reads
 │   │                               #   the X-SaveLocker-Token from <StateDir>\api-token per call.
 │   ├── Contracts.cs                # Plain POCOs mirroring the agent's DTOs, each with a

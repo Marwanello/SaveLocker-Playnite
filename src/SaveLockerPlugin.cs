@@ -46,20 +46,14 @@ namespace SaveLocker.Playnite
             return new SaveLockerSettingsView(settingsViewModel);
         }
 
-        // Asked for directly, after Tier 4's nudge (below) turned out to be too easy to miss: an
-        // always-visible control on the game details view rather than something a player only sees
-        // after playing an unlinked game once. Ignores args.Name/Mode and always returns the same
-        // control — this plugin exposes exactly one view control, so there is nothing to switch on.
-        // THEME-DEPENDENT — confirmed not rendered under Harmony, this project's own verification
-        // theme; see LinkStatusButton's own doc comment. GetGameMenuItems below is the reliable
-        // equivalent every theme supports, since Playnite owns that menu itself.
-        public override Control GetGameViewControl(GetGameViewControlArgs args)
-        {
-            return new GameStatusControl(PlayniteApi, client);
-        }
-
-        // The theme-independent equivalent of GameStatusControl above — Playnite renders its own
-        // right-click menu regardless of what the active theme's XAML does or doesn't wire up.
+        // A GetGameViewControl-based status chip was built and removed again: Playnite only ever calls
+        // GetGameViewControl for a plugin that both registers via AddCustomElementSupport (this plugin
+        // never has) and whose active theme's XAML names a matching ContentControl for it — confirmed
+        // against Playnite's own source (ControlTemplateTools.InitializePluginControls) that no stock
+        // theme, Harmony or Default included, defines one for SaveLocker. There is no code fix for
+        // that; it would need a theme author to add the slot, or SaveLocker shipping its own theme.
+        // GetGameMenuItems below is the reliable, theme-independent surface every theme supports,
+        // since Playnite owns that menu itself.
         // Deliberately no synchronous "what's the current state" check to decide which items to show
         // (tasks/playnite-plugin/plan.md Phase 13's "GetGameMenuItems... run every time a player
         // right-clicks anything"): building this list must not block on a network call, so all three
