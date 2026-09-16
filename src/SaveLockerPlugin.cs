@@ -109,10 +109,10 @@ namespace SaveLocker.Playnite
         // where a modal is impossible to miss and blocks exactly long enough to read.
         private async Task RunSyncNowAsync(Game game)
         {
-            var tracked = FindMatch(game, out var agentReachable);
-            if (tracked != null) { await SyncNowAction.RunAsync(PlayniteApi, client, tracked).ConfigureAwait(true); return; }
+            var match = await FindMatchAsync(game).ConfigureAwait(true);
+            if (match.Tracked != null) { await SyncNowAction.RunAsync(PlayniteApi, client, match.Tracked).ConfigureAwait(true); return; }
 
-            if (!agentReachable) { ShowAgentUnreachableDialog(); return; }
+            if (!match.AgentReachable) { ShowAgentUnreachableDialog(); return; }
             await OfferLinkAsync(game).ConfigureAwait(true);
         }
 
@@ -126,10 +126,11 @@ namespace SaveLocker.Playnite
         // immediate, unmissable answer to "what happened" instead of having to notice a toast.
         private async Task RunResolveConflictAsync(Game game)
         {
-            var tracked = FindMatch(game, out var agentReachable);
+            var match = await FindMatchAsync(game).ConfigureAwait(true);
+            var tracked = match.Tracked;
             if (tracked == null)
             {
-                if (!agentReachable) { ShowAgentUnreachableDialog(); return; }
+                if (!match.AgentReachable) { ShowAgentUnreachableDialog(); return; }
                 await OfferLinkAsync(game).ConfigureAwait(true);
                 return;
             }
@@ -363,6 +364,34 @@ namespace SaveLocker.Playnite
                 // Agent unreachable/not running — same as an untracked game, no gate at all.
                 Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
                 return null;
+            }
+        }
+
+        // Plain class, not an out parameter — an async method can't have one. Same reasoning as
+        // ConflictResolver.FetchedDetails for using a plain class instead of a C# 7 named tuple on
+        // net462. Async equivalent of FindMatch above, for callers that run on the UI thread and must
+        // not block it (RunSyncNowAsync/RunResolveConflictAsync, from GetGameMenuItems' async lambda —
+        // see LinkAction.RunAsync's own doc comment on why blocking there is the one thing to avoid).
+        // FindMatch itself stays as-is for OnGameStarting/OnGameStopped, which either already run
+        // inside a modal progress dialog or off the UI thread via Task.Run.
+        private sealed class GameMatchResult
+        {
+            public TrackedGameDto Tracked;
+            public bool AgentReachable;
+        }
+
+        private async Task<GameMatchResult> FindMatchAsync(Game game)
+        {
+            try
+            {
+                var tracked = await client.GetGamesAsync().ConfigureAwait(true);
+                return new GameMatchResult { Tracked = GameMatcher.FindMatch(game, tracked), AgentReachable = true };
+            }
+            catch (Exception ex)
+            {
+                // Agent unreachable/not running — same as an untracked game, no gate at all.
+                Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
+                return new GameMatchResult();
             }
         }
 
