@@ -1,0 +1,25 @@
+# Phase 16 — installer manifest (tasks/playnite-plugin/plan.md, Group 6).
+#
+# STAGED, NOT LIVE. Once a real version tag is pushed and Phase 17's release workflow has actually
+# produced a GitHub Release (confirmed 2026-09-16: the workflow itself already publishes SaveLocker.zip
+# + SaveLocker.pext + SHA256SUMS.txt in one run — see .github/workflows/release.yml — but no tag has
+# ever been pushed, so no release exists yet), copy this file's content to installer.yaml at this
+# repo's root (the URL addon-manifest.yaml's InstallerManifestUrl points at) and fill in the fields
+# below marked PENDING with the values the real release actually produced.
+#
+# RequiredApiVersion confirmed against the REAL Playnite.SDK.dll bundled in Playnite's own latest
+# release (10.60, fetched and inspected 2026-09-16): FileVersion 6.17.0.0. Note this is a genuinely
+# different number space from Playnite's own app version (10.60) — do not confuse the two.
+#
+# Schema confirmed directly against JosefNemec/PlayniteAddonDatabase's own README (fetched
+# 2026-09-16), cross-checked against a real merged entry (AfonsoJeremias/GameManagement/installer.yaml)
+# for exact formatting.
+
+AddonId: '4d7017e5-87c0-4011-92c4-83f5dde2ada2'
+Packages:
+  - Version: 0.1.0                    # matches extension.yaml's current Version — PENDING confirmation once tagged
+    RequiredApiVersion: 6.17.0
+    ReleaseDate: PENDING              # YYYY-MM-DD of the real GitHub Release once v0.1.0 is tagged
+    PackageUrl: https://github.com/Marwanello/SaveLocker-Playnite/releases/download/v0.1.0/SaveLocker.pext
+    Changelog:
+      - First release: pre-launch conflict gate, automatic name/Steam-AppID matching, "Link to SaveLocker" popup, self-updating plugin
