@@ -42,6 +42,10 @@ namespace SaveLocker.Playnite
             this.settings = settings;
         }
 
+        // Lets callers that only hold a LocalApiClient (SyncNowAction, ConflictResolver) build a
+        // "open the agent at ___" message without each needing their own reference to Settings.
+        public string AgentUrl => settings().AgentUrl;
+
         /// <summary>
         /// <see cref="LocalAuth"/> (SaveLocker/src/Agent.Core/LocalAuth.cs) mints this once per
         /// machine-install beside config.json, 0600. Read fresh every call — it is a handful of
@@ -158,6 +162,20 @@ namespace SaveLocker.Playnite
         public async Task SetAliasAsync(Guid gameId, string alias, CancellationToken ct = default(CancellationToken))
         {
             await SendAsync<object>(HttpMethod.Post, $"/api/games/{gameId}/alias", new { alias }, o => null, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>Sets a manually-browsed path onto a still-cached candidate (tasks/playnite-plugin/plan.md
+        /// Phase 12, tier 4). The server re-validates through SavePathGuard the same as a typed Add
+        /// Games path — a refusal surfaces as an HttpRequestException whose body carries the reason.</summary>
+        public async Task SetCandidateFolderAsync(int candidateId, string path, CancellationToken ct = default(CancellationToken))
+        {
+            await SendAsync<object>(HttpMethod.Post, $"/api/candidates/{candidateId}/folder", new { path }, o => null, ct).ConfigureAwait(false);
+        }
+
+        public async Task<EnrollResult> EnrollAsync(int candidateId, CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Post, "/api/enroll", new { ids = new[] { candidateId } },
+                o => EnrollResult.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
         }
     }
 }

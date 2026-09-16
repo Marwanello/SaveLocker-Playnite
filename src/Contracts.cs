@@ -158,6 +158,11 @@ namespace SaveLocker.Playnite
         public int Id;
         public bool Resolved;
         public string SuggestedPath;
+        /// <summary>The candidate's own name — for a manifest-driven lookup this is the manifest's
+        /// canonical spelling, not necessarily Playnite's own title (Enroller.EnrollAsync always
+        /// prefers ManifestKey over the discovered name, tasks/playnite-plugin/plan.md's "Manifest
+        /// search" section).</summary>
+        public string CandidateName;
 
         public static CandidateLookupResult FromJson(IDictionary<string, object> o)
         {
@@ -167,6 +172,22 @@ namespace SaveLocker.Playnite
                 Id = Json.GetInt(o, "id"),
                 Resolved = Json.GetBool(o, "resolved"),
                 SuggestedPath = candidate != null ? Json.GetString(candidate, "path") : null,
+                CandidateName = candidate != null ? Json.GetString(candidate, "name") : null,
+            };
+        }
+    }
+
+    internal sealed class EnrollResult
+    {
+        public int Enrolled;
+        public int Skipped;
+
+        public static EnrollResult FromJson(IDictionary<string, object> o)
+        {
+            return new EnrollResult
+            {
+                Enrolled = Json.GetInt(o, "enrolled"),
+                Skipped = Json.GetInt(o, "skipped"),
             };
         }
     }

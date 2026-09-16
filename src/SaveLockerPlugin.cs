@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Windows;
 using System.Windows.Controls;
 using Playnite.SDK;
 using Playnite.SDK.Events;
@@ -47,14 +46,64 @@ namespace SaveLocker.Playnite
             return new SaveLockerSettingsView(settingsViewModel);
         }
 
+        // Asked for directly, after Tier 4's nudge (below) turned out to be too easy to miss: an
+        // always-visible control on the game details view rather than something a player only sees
+        // after playing an unlinked game once. Ignores args.Name/Mode and always returns the same
+        // control — this plugin exposes exactly one view control, so there is nothing to switch on.
+        // THEME-DEPENDENT — confirmed not rendered under Harmony, this project's own verification
+        // theme; see LinkStatusButton's own doc comment. GetGameMenuItems below is the reliable
+        // equivalent every theme supports, since Playnite owns that menu itself.
+        public override Control GetGameViewControl(GetGameViewControlArgs args)
+        {
+            return new LinkStatusButton(PlayniteApi, client);
+        }
+
+        // The theme-independent equivalent of the button above — Playnite renders its own right-click
+        // menu regardless of what the active theme's XAML does or doesn't wire up. Deliberately no
+        // synchronous "is this already linked" check here: building this list runs every time a
+        // player right-clicks anything, and blocking that on a network call to show a checkmark would
+        // make every right-click feel laggy. LinkAction.RunAsync itself reports "already tracked" via
+        // a toast if the click turns out to be a no-op.
+        public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
+        {
+            yield return new GameMenuItem
+            {
+                Description = "Link to SaveLocker",
+                MenuSection = "SaveLocker",
+                // Deliberately NOT Task.Run: LinkAction can end up showing a WPF window (the
+                // manual picker) when nothing auto-resolves, and WPF windows can only be created on
+                // the STA thread that owns the UI — Task.Run hands this to a threadpool thread
+                // instead, so ShowPopup's CreateWindow/ShowDialog silently throws and the whole
+                // action looks like it did nothing. An async lambda run directly on this (UI) thread
+                // keeps every await's continuation on the same thread instead.
+                Action = async a =>
+                {
+                    foreach (var game in a.Games)
+                        await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
+                },
+            };
+        }
+
         public override void OnGameStarting(OnGameStartingEventArgs args)
         {
             TrackedGameDto tracked = null;
             var ownsGate = false;
             try
             {
-                tracked = FindMatch(args.Game);
-                if (tracked == null) return;
+                tracked = FindMatch(args.Game, out var agentReachable);
+                if (tracked == null)
+                {
+                    // Only nudge when the agent actually answered with "no match" — an unreachable
+                    // agent means this launch is exactly like an untracked game today, nothing to link.
+                    if (agentReachable) MaybeShowLinkNudge(args.Game);
+                    return;
+                }
+
+                // Backfills the tag for anything matched purely automatically (GameMatcher, never
+                // through LinkAction/LinkToSaveLockerWindow) — e.g. games that were already tracked
+                // before this tag existed, or that always resolved on their own. Ensure() is a no-op
+                // once the tag is already there, so this costs nothing on every later launch.
+                LinkedTag.Ensure(PlayniteApi, args.Game);
 
                 // Playnite has occasionally been seen to fire OnGameStarting twice for one launch
                 // (e.g. certain emulator/launcher setups) — without this, a second concurrent call for
@@ -103,7 +152,7 @@ namespace SaveLocker.Playnite
 
                     case LaunchDecision.Blocked:
                         if (!gate.ConflictId.HasValue) return; // shouldn't happen; nothing to block on
-                        if (!ResolveConflictInteractively(tracked, gate.ConflictId.Value))
+                        if (!ConflictResolver.ResolveInteractively(PlayniteApi, client, tracked.Name, gate.ConflictId.Value))
                             args.CancelStartup = true;
                         return;
                 }
@@ -119,11 +168,40 @@ namespace SaveLocker.Playnite
             }
         }
 
+        // Asked for directly: a game linked before this tag existed (or matched automatically and
+        // never once run through LinkAction/LinkToSaveLockerWindow) would otherwise only pick up
+        // LinkedTag the next time it happens to launch — this backfills the whole library once at
+        // startup instead, so "already-linked" games show the tag without the player having to launch
+        // each one first. Runs off the UI thread since nothing here touches WPF, matching
+        // OnGameStopped's own Task.Run below; LinkedTag.Ensure is a no-op for anything already tagged,
+        // so repeating this on every startup costs nothing once the library has caught up.
+        public override void OnApplicationStarted(OnApplicationStartedEventArgs args)
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    var tracked = client.GetGamesAsync().GetAwaiter().GetResult();
+                    foreach (var game in PlayniteApi.Database.Games)
+                    {
+                        if (GameMatcher.FindMatch(game, tracked) != null)
+                            LinkedTag.Ensure(PlayniteApi, game);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Same fail-open contract as everywhere else here — an unreachable agent at
+                    // startup just means this backfill retries on the next application start.
+                    Logger.Warn(ex, "SaveLocker: couldn't backfill linked tags on startup");
+                }
+            });
+        }
+
         public override void OnGameStopped(OnGameStoppedEventArgs args)
         {
             try
             {
-                var tracked = FindMatch(args.Game);
+                var tracked = FindMatch(args.Game, out _);
                 if (tracked == null) return;
 
                 var gameId = tracked.Id;
@@ -146,62 +224,13 @@ namespace SaveLocker.Playnite
             }
         }
 
-        /// <summary>
-        /// Blocks (this is already inside a confirmed <see cref="LaunchDecision.Blocked"/> — the one
-        /// decision allowed to be fail-closed) until the player resolves the conflict or cancels.
-        /// Unlike the pre-launch call above, a failure fetching the conflict's own details must NOT
-        /// fail open: the agent already told us a genuine divergence exists, so launching over it
-        /// would risk the exact overwrite this whole feature exists to prevent.
-        /// </summary>
-        private bool ResolveConflictInteractively(TrackedGameDto tracked, Guid conflictId)
+        private TrackedGameDto FindMatch(Game game, out bool agentReachable)
         {
-            try
-            {
-                var conflict = client.GetConflictAsync(conflictId).GetAwaiter().GetResult();
-                var cloudVersion = client.GetVersionAsync(conflict.VersionAId).GetAwaiter().GetResult();
-                var cloudStats = client.GetVersionStatsAsync(conflict.VersionAId).GetAwaiter().GetResult();
-                var deviceVersion = client.GetVersionAsync(conflict.VersionBId).GetAwaiter().GetResult();
-                var deviceStats = client.GetVersionStatsAsync(conflict.VersionBId).GetAwaiter().GetResult();
-
-                // CreateWindow (not `new Window()`) is what makes this follow whatever theme the
-                // player has picked — it returns a Window already carrying Playnite's own chrome and
-                // StandardWindowStyle, so Background/Foreground resolve from the active theme instead
-                // of WPF's plain-white default. A hand-built Window never picks that up (hardware-found
-                // 2026-09-15: it rendered as a stray white dialog against a dark Playnite theme).
-                var themedWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
-                {
-                    ShowMinimizeButton = false,
-                    ShowMaximizeButton = false,
-                });
-                themedWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
-
-                // Fullscreen mode has no equivalent of Desktop's window-chrome/popup theme resources
-                // (confirmed against Playnite's own Fullscreen theme source, not assumed) — the Desktop
-                // resolve window renders as an unstyled white box there. Routed to a separate,
-                // Fullscreen-native overlay instead of trying to make one window serve both.
-                bool? result = PlayniteApi.ApplicationInfo.Mode == ApplicationMode.Fullscreen
-                    ? new ConflictResolveWindowFullscreen(
-                        themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats).ShowDialog()
-                    : new ConflictResolveWindow(
-                        themedWindow, client, tracked.Name, conflictId, cloudVersion, cloudStats, deviceVersion, deviceStats).ShowDialog();
-                return result == true;
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "SaveLocker: couldn't load conflict details");
-                MessageBox.Show(
-                    "SaveLocker found a real save conflict for this game but couldn't load its details (" + ex.Message + ").\n\n" +
-                    "Open the SaveLocker agent at " + settingsViewModel.Settings.AgentUrl + " to resolve it, then launch again.",
-                    "SaveLocker — save conflict", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return false;
-            }
-        }
-
-        private TrackedGameDto FindMatch(Game game)
-        {
+            agentReachable = false;
             try
             {
                 var tracked = client.GetGamesAsync().GetAwaiter().GetResult();
+                agentReachable = true;
                 return GameMatcher.FindMatch(game, tracked);
             }
             catch (Exception ex)
@@ -209,6 +238,50 @@ namespace SaveLocker.Playnite
                 // Agent unreachable/not running — same as an untracked game, no gate at all.
                 Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Tier 4 of GameMatcher's priority chain (tasks/playnite-plugin/plan.md, "Automatic game
+        /// matching", point 4): a low-friction, dismissible nudge shown once ever per Playnite game
+        /// that never automatically matched, with a one-click path into the Phase 12 picker. Never
+        /// blocking — the game already launched normally by the time this fires.
+        /// </summary>
+        private void MaybeShowLinkNudge(Game game)
+        {
+            try
+            {
+                var dataDir = GetPluginUserDataPath();
+                if (NudgeState.WasShown(dataDir, game.Id)) return;
+                NudgeState.MarkShown(dataDir, game.Id);
+
+                PlayniteApi.Notifications.Add(new NotificationMessage(
+                    "savelocker-link-nudge-" + game.Id,
+                    $"SaveLocker couldn't automatically match '{game.Name}' — click to link it and sync this game.",
+                    NotificationType.Info,
+                    () => ShowLinkPopup(game)));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "SaveLocker: link nudge failed");
+            }
+        }
+
+        private void ShowLinkPopup(Game game)
+        {
+            try
+            {
+                var themedWindow = PlayniteApi.Dialogs.CreateWindow(new WindowCreationOptions
+                {
+                    ShowMinimizeButton = false,
+                    ShowMaximizeButton = false,
+                });
+                themedWindow.Owner = PlayniteApi.Dialogs.GetCurrentAppWindow();
+                new LinkToSaveLockerWindow(themedWindow, PlayniteApi, client, game).ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "SaveLocker: link popup failed to open");
             }
         }
     }

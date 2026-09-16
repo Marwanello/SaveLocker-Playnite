@@ -28,6 +28,14 @@ SaveLocker-Playnite/
 │   ├── SaveLockerSettingsView.cs   # Settings page UserControl, built in code (no XAML/BAML).
 │   ├── ConflictResolveWindow.cs    # The "this device / the cloud" resolve dialog shown on a
 │   │                               #   confirmed Blocked decision. Native WPF, no WebView2.
+│   ├── ConflictResolveWindowFullscreen.cs # Fullscreen-mode counterpart — different theme keys,
+│   │                               #   chromeless full-shell overlay, controller-friendly.
+│   ├── LinkToSaveLockerWindow.cs   # Phase 12: the "Link to SaveLocker" five-tier enroll/link popup —
+│   │                               #   search tracked games, automatic lookup, manifest search,
+│   │                               #   manual folder browse (native SelectFolder, no WebView2), pick
+│   │                               #   an existing tracked game. Opened from the Tier-4 nudge only.
+│   ├── NudgeState.cs               # Flat one-Guid-per-line file tracking which Playnite games have
+│   │                               #   already been offered the Tier-4 link nudge, once ever.
 │   └── PropertyChangedBase.cs      # Minimal INotifyPropertyChanged helper (SDK ships no
 │                                   #   ObservableObject base in this version — checked by reflection,
 │                                   #   docs/Gotchas.md).

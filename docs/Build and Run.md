@@ -287,9 +287,359 @@ With the portable Playnite + test agent from above running:
    important thing to confirm before trusting this on a real library — SaveLocker must never be why
    a game won't start.
 
+## Phase 12 manual verification: "Link to SaveLocker" (via `tests/testenv.ps1`)
+
+This uses the main repo's throwaway test rig (`tests/testenv.ps1`) instead of hand-starting a
+scratch server + agent — the "Install — fastest path" section above already recommends it for
+everyday plugin installs; this section is the same rig, driven through the full Phase 12 checklist.
+It replaces the fully-manual setup this doc used to describe here (steps 1–4 of the "Testing against
+a portable Playnite" section above still apply for the **portable Playnite extraction itself** —
+`testenv.ps1` never downloads or extracts Playnite for you, only builds/installs the plugin and runs
+the server + agent).
+
+**Prerequisites, once:**
+- **Docker Desktop running** — `testenv.ps1`'s console is a real container (`docker build`/`docker
+  run`), not the scratch `dotnet run` server the fully-manual path above uses.
+- **WSL with a distro reachable as `Ubuntu`** (`wsl -l -v` to check; `-Distro <name>` overrides). The
+  rig's default `-Only all` (what every command below uses, since Playnite needs the console AND the
+  Windows tray up, and `-Only windows`/`-Only console` alone skip the Playnite install entirely — see
+  `Use-Playnite`'s own gating in `tests/testenv.ps1`) also builds and starts a headless WSL Linux test
+  agent alongside Windows. Harmless and fully disposable, but real — if WSL genuinely isn't set up on
+  this box, expect a `Warn` line about it and move on; it doesn't block the Windows/Playnite side.
+- **A portable Playnite extraction**, e.g. `C:\SaveLockerTest\Playnite` — see "Testing against a
+  portable Playnite + a test agent" → step 1 above if you don't have one yet.
+- **This plugin's own branch, checked out somewhere `testenv.ps1` can find it.** `Get-PlaynitePluginRepo`
+  resolves the sibling `..\SaveLocker-Playnite` **next to the main `SaveLocker` checkout** by default
+  — not necessarily where Phase 12's own worktree/branch actually lives. Point it there explicitly:
+
+  ```powershell
+  $env:SAVELOCKER_PLAYNITE_PLUGIN_REPO = "D:\Projects\SaveLocker\SaveLocker-Playnite\.claude\worktrees\playnite-plugin-group-4"
+  ```
+
+  (adjust to wherever your own checkout of the `playnite-plugin-group-4` branch actually is — a
+  fresh clone on `main` won't have Phase 12's code at all). `testenv.ps1` prints exactly which repo/
+  branch/commit it built from every time, so a stale build is never silent.
+
+### Build and start the rig
+
+```powershell
+cd D:\Projects\SaveLocker\SaveLocker
+$env:SAVELOCKER_PLAYNITE_PLUGIN_REPO = "D:\Projects\SaveLocker\SaveLocker-Playnite\.claude\worktrees\playnite-plugin-group-4"
+
+.\tests\testenv.ps1 build -PlaynitePath C:\SaveLockerTest\Playnite
+.\tests\testenv.ps1 up    -PlaynitePath C:\SaveLockerTest\Playnite
+```
+
+Expect `build` to print something like:
+
+```
+== building the Playnite plugin from D:\Projects\SaveLocker\SaveLocker-Playnite\.claude\worktrees\playnite-plugin-group-4  [playnite-plugin-group-4 @ 2b74572]
+```
+
+— confirm the branch/commit shown is actually the one you mean to test. `up` prints, among other
+lines:
+
+```
+  installed to C:\SaveLockerTest\Playnite\Extensions\SaveLocker
+  (re)start Playnite at 'C:\SaveLockerTest\Playnite\Playnite.DesktopApp.exe', then Add-ons -> SaveLocker -> Settings -> Agent URL http://127.0.0.1:5188, State directory C:\Users\<you>\AppData\Local\SaveLocker-test\SaveLocker
+...
+playnite     C:\SaveLockerTest\Playnite\Playnite.DesktopApp.exe
+```
+
+Copy that exact **State directory** value — it's this rig's real `$StateRoot\SaveLocker`, not the
+`C:\SaveLockerTest\agent-state` this doc used to describe. Confirm everything is actually up:
+
+```powershell
+.\tests\testenv.ps1 status -PlaynitePath C:\SaveLockerTest\Playnite
+```
+
+Expect a `windows      v0.0.0-test  connected=True  :5188`-shaped line and
+`playnite     plugin installed=True  (C:\SaveLockerTest\Playnite)`.
+
+Launch Playnite from that exact path, go to **Add-ons → SaveLocker → Settings**, and set:
+
+```
+Agent URL:        http://127.0.0.1:5188
+State directory:  C:\Users\<you>\AppData\Local\SaveLocker-test\SaveLocker
+```
+
+(substitute the exact path `up` printed for you — `%LOCALAPPDATA%\SaveLocker-test\SaveLocker` by
+default, but a custom `-StateRoot` changes it). Click **Test connection** — expect *"Connected —
+WinTest, 0 game(s) tracked, agent 0.0.0-test"* (the machine name `up` auto-registers is always
+`WinTest` — see `Start-Windows` in `tests/testenv.ps1`).
+
+### Reusable helper: reading tracked-game state directly
+
+Several steps below want to see `Alias`/`SteamAppId`/`InstallDir` on a tracked game, which
+`SaveLocker.Agent.exe list` doesn't print. Call the same local API the plugin itself calls, from a
+plain PowerShell prompt (works from anywhere, not just the agent's own terminal):
+
+```powershell
+function Get-SaveLockerGames {
+    param(
+        [string]$AgentUrl = "http://127.0.0.1:5188",
+        [string]$StateDir = "$env:LOCALAPPDATA\SaveLocker-test\SaveLocker"
+    )
+    $token = (Get-Content (Join-Path $StateDir "api-token") -Raw).Trim()
+    Invoke-RestMethod -Uri "$AgentUrl/api/games" -Headers @{ "X-SaveLocker-Token" = $token }
+}
+
+# Usage — run this any time you want to see what's actually tracked:
+Get-SaveLockerGames | Format-Table id, name, alias, steamAppId, installDir, path -AutoSize
+```
+
+(`5188`/`$env:LOCALAPPDATA\SaveLocker-test\SaveLocker` are `testenv.ps1`'s own defaults — `-WinPort`/
+`-StateRoot` change them; match whatever you actually passed.)
+
+### Track a baseline game (needed for step 13's "pick an existing tracked game")
+
+`testenv.ps1` has no CLI of its own for tracking a game — reuse the agent's own CLI directly,
+pointed at the rig's state (same two env vars `Start-Windows` itself sets, `Use-TestEnvVars` in
+`tests/testenv.ps1`), from a **separate** PowerShell window so the already-running test tray isn't
+disturbed:
+
+```powershell
+$env:SAVELOCKER_STATE_ROOT = "$env:LOCALAPPDATA\SaveLocker-test"
+$env:SAVELOCKER_TRAY_PORT  = "5188"
+
+& dotnet D:\Projects\SaveLocker\SaveLocker\src\Agent\bin\Debug\net10.0-windows\SaveLocker.Agent.dll `
+    add-game --name "Your Small Test Game" --dir "C:\path\to\its\save\folder"
+```
+
+Pick something small and disposable-feeling, same as this doc's non-testenv walkthrough already
+advises. This is safe to run while the test tray (started by `up`) is already running — `add-game`
+is a one-shot CLI call that edits `config.json` under the same cross-process lock the daemon itself
+uses (`AgentStateLock`), not a second competing daemon.
+
+### 7. Add the test Custom Game entries
+
+Playnite still has no CLI to add library entries, so — same one-time manual step as "Conflict Game"
+above — add each of these via **Add game → Custom game** in the portable Playnite
+(`C:\SaveLockerTest\Playnite\Playnite.DesktopApp.exe`). The Custom Game editor has a **Name** field
+at the top, an **Installation** tab (leave **Install directory** blank for all of these — a blank
+`InstallDirectory` is exactly what a manually-added, never-installed-through-a-launcher entry
+looks like, and it's fine: `GameMatcher`'s InstallDir tier just never fires for these, same as it
+wouldn't for a real manually-added game), and an **Actions** tab where you add one Play Action:
+
+```
+Type:              File
+Path:              D:\Projects\SaveLocker\SaveLocker\src\Agent\bin\Debug\net10.0-windows\SaveLocker.Agent.exe
+Arguments:         fake-game
+Working directory: (leave blank)
+```
+
+(Build the Windows Agent first if that path doesn't exist yet:
+`dotnet build src\Agent\SaveLocker.Agent.csproj --no-incremental` from the main repo root.)
+
+Create these four entries, changing only the **Name** field each time (Path/Arguments/Working
+directory are identical for all of them — that's deliberate, so every entry is genuinely launchable
+and closable through the same fake exe):
+
+| # | Name (exact) | Tests |
+|---|---|---|
+| 1 | `Unmatched Test Game` | Tier-4 nudge → falls through to Tier 3/4 |
+| 2 | `Second Unmatched Game` | The agent-down nudge-suppression case (step 9) |
+| 3 | *(pick a real, already-installed, never-tracked-by-SaveLocker game you've actually played — see below)* | Tier 2 automatic resolve |
+| 4 | *(the SAME real game as #3, added a second time under a nickname — e.g. `Civ 6` for "Sid Meier's Civilization VI")* | Tier 3 manifest search |
+| 5 | `Totally Fake Game XYZ` | Tier 4 manual folder browse + the refusal check |
+| 6 | `Nudge Rearm Test` | Re-triggering the popup for step 13 without disturbing #1's own nudge record |
+
+Entries #3/#4 need something real, since Tier 2's automatic resolve only succeeds against an
+actual Ludusavi manifest entry with an actual save folder already on disk. Pick something small you
+already own that's not yet tracked by this SaveLocker install — its real save folder gets read, and
+once you click Enroll, tracked and uploaded on the next sync, same spirit as "Track a baseline game"
+above's "small and disposable-feeling" pick (it can be the same game as your baseline, or a
+different one — either works, as long as it isn't tracked yet). It needs: (a) not already tracked here, (b) played at least once so its
+save folder exists on disk, (c) a title Ludusavi's manifest recognizes (most well-known titles are —
+the manifest itself isn't in this repo, it's fetched at runtime from
+[mtkennerly/ludusavi-manifest](https://github.com/mtkennerly/ludusavi-manifest); easiest is to just
+try it — step 10 below tells you immediately whether it resolved, and if not, entry #4's manifest
+search in step 11 lets you search that same manifest by hand to check). **If you'd rather not risk
+any real game's data at all, skip #3/#4 and only run steps 8, 9, 12, and 13.**
+
+Also create two disposable scratch folders for the manual-browse step:
+
+```powershell
+New-Item -ItemType Directory -Force C:\SaveLockerTest\manual-folder-test | Out-Null
+Set-Content C:\SaveLockerTest\manual-folder-test\savefile.txt "test"
+```
+
+### 8. The nudge fires once, and only once
+
+In the portable Playnite, select **Unmatched Test Game** and click **Play**. Expect:
+- The fake exe's window opens immediately ("Conflict Game is running" / an Exit button — same
+  window `fake-game` always shows, the label is cosmetic) — the nudge is never blocking.
+- A Playnite notification appears (bell icon, top right, or a toast if enabled): *"SaveLocker
+  couldn't automatically match 'Unmatched Test Game' — click to link it and sync this game."*
+
+Click **Exit** on the fake exe, then launch **Unmatched Test Game** a second time. Expect **no
+second notification**. Confirm directly:
+
+```powershell
+Get-Content "C:\SaveLockerTest\Playnite\ExtensionsData\4d7017e5-87c0-4011-92c4-83f5dde2ada2\shown-link-nudges.txt"
+```
+
+(the portable install's `ExtensionsData\<PluginId>` — `4d7017e5-87c0-4011-92c4-83f5dde2ada2` is
+`SaveLockerPlugin.PluginId`, see `docs/REPO_MAP.md`). Expect exactly one GUID printed, for this one
+game — `NudgeState` writes one line per Playnite game `Id` the first time it's offered the nudge,
+never again after.
+
+### 9. The nudge is suppressed while the agent is unreachable
+
+**Not** `testenv.ps1 down` for this one — that command ignores `-Only` entirely and stops the
+console + WSL + Deck right along with Windows (`down`'s switch-case in `tests/testenv.ps1` calls
+`Stop-Windows`/`Invoke-Wsl 'down'`/`Stop-Deck`/`Stop-Console` unconditionally; `-AgentsOnly` skips
+only the last of those). What this step actually wants is the test **tray** gone while the console
+stays up, so kill just that one process the same way `Stop-Windows` itself finds it:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name = 'dotnet.exe'" |
+    Where-Object { $_.CommandLine -like '*SaveLocker.Agent.dll*' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+```
+
+Launch **Second Unmatched Game**. Expect: the fake exe opens immediately, **no notification at
+all** — re-run the `Get-Content` command from step 8 and confirm this game's id is still **absent**
+(genuinely never offered, not "already shown"). Bring the tray back:
+
+```powershell
+.\tests\testenv.ps1 up -Only windows
+```
+
+(`windows` is in `-Only`'s valid set for `build`/`up` specifically — just not `down`, per above.
+`Start-Windows` re-registers only if `config.json` has no `apiKey` yet, which it already does from
+the first `up`, so this just restarts the tray process itself, console/WSL/Playnite install
+untouched.) Launch **Second Unmatched Game** again. Expect: **now** the nudge appears, and the `Get-Content`
+check shows a second GUID in the file. This is `SaveLockerPlugin.FindMatch`'s `agentReachable`
+distinction doing its job — an unreachable agent must never look identical to "reached the agent,
+no match" for nudging purposes, or every unmatched launch while the agent happens to be down would
+fire one.
+
+### 10. Tier 2 — automatic resolve and enroll
+
+Launch entry #3 (the real, never-tracked game) and click its notification. Expect the popup window
+to open on a brief loading screen ("Looking for a match…", then "Checking SaveLocker's game
+database…"), then land directly on:
+
+> **Track "\<your title\>" as \<same or manifest-normalized title\>?**
+> Save found at: *\<a real path under this machine's profile — e.g.
+> `C:\Users\<you>\AppData\Local\<Publisher>\<Game>\Saves`\>*
+
+Click **Enroll**. Expect a Playnite notification *"SaveLocker: now tracking '\<title\>'."* and the
+popup window closes on its own. Confirm with the helper from earlier:
+
+```powershell
+Get-SaveLockerGames | Format-Table id, name, alias -AutoSize
+```
+
+Expect a new row for this game, `alias` **empty** if the manifest's name matched Playnite's title
+exactly, or **set to your Playnite title** if the manifest normalized it to something slightly
+different.
+
+**Alias-backfill check** (the fix that makes the popup's result actually stick — without it,
+`GameMatcher`'s name/Alias tier would never recognize this game again): launch entry #3 a **second**
+time. Expect **no popup, no nudge** — it auto-matches silently now, the same as any already-tracked
+game.
+
+**If it landed on the manifest-search screen instead** (`SuggestedSaveDir` resolved to nothing),
+that just means this particular title/save-folder combination didn't auto-resolve — pick a
+different game for entry #3, or continue straight into step 11's search flow with this same entry.
+
+### 11. Tier 3 — manual manifest search
+
+Launch entry #4 (the nickname, e.g. "Civ 6"). Expect the manifest-search screen: *"SaveLocker
+couldn't automatically find 'Civ 6' — search its game database by name,"* search box pre-filled
+with `Civ 6` (and likely an empty or irrelevant result list from that auto-search). Clear the box,
+type a distinctive fragment of the real title — e.g. `civilization` — and click **Search**. Expect a
+scrollable list including the manifest's exact entry (e.g. "Sid Meier's Civilization VI"). Double-
+click it. Expect either:
+
+- the confirm-enroll screen (likely, since entry #3 already proved this title/folder resolves), or
+- the honest *"SaveLocker knows … but hasn't found a save folder"* screen, if it genuinely didn't.
+
+Either way this confirms the search → re-lookup round trip. If you land on confirm-enroll, click
+**Enroll**, then re-run:
+
+```powershell
+Get-SaveLockerGames | Format-Table id, name, alias -AutoSize
+```
+
+Expect **one row**, not two — `name` is the manifest's real spelling (not "Civ 6"), and `alias` is
+now `Civ 6` (the backfilled alias that lets THIS Playnite entry match on its next launch, separate
+from entry #3's own alias if the two titles differed). Confirm by launching entry #4 again: expect
+**no popup**.
+
+### 12. Tier 4 — manual folder browse, and a clean refusal
+
+Launch **Totally Fake Game XYZ**. Expect the manifest-search screen with **zero results** for any
+query you try (it's genuinely absent from the ~53,000-name manifest). Click **Browse for the folder
+myself** — Playnite's own native Windows folder-picker dialog should open (a real `SelectFolder()`
+call — not a web page, not a WebView2 popup; confirms the deliberate deviation from `plan.md`'s own
+WebView2 suggestion, see `docs/CONTEXT.md`). Navigate to and select:
+
+```
+C:\SaveLockerTest\manual-folder-test
+```
+
+Expect a brief "Checking that folder…" screen, then the confirm-enroll screen showing that exact
+path. Click **Enroll** — expect the same success notification as step 10, and a new row from
+`Get-SaveLockerGames` with `path` equal to (or a canonicalized form of) that folder.
+
+**Refusal check** (`plan.md`'s "Link to SaveLocker" problem 4 — the popup must surface *why* a
+folder was refused, not fail silently). Add one more throwaway Custom Game entry (same Path/
+Arguments as the others, Name e.g. `Refusal Test Game`), launch it, reach the same "Browse for the
+folder myself" screen, but this time pick **`C:\`** itself (the drive root) in the folder picker.
+Expect a plain-English refusal on the error screen — something like *"Can't use that folder: …"* —
+**never** a raw `{"error":"..."}` blob or an unhandled exception, with a working **Try again**
+button that reopens the folder picker.
+
+### 13. Pick an existing tracked game (available from every screen)
+
+Launch **Nudge Rearm Test** (entry #6 — untouched so far, so its nudge fires fresh) and click its
+notification. From whichever screen the popup opens on, click **Pick an existing tracked game
+instead**. Expect a filterable list of every game tracked so far (the "Track a baseline game" entry,
+plus whichever of steps 10–12 you ran). Type part of the baseline game's name into the filter box at
+the top, confirm the list narrows to matches, then double-click the correct one. Expect a Playnite
+notification *"SaveLocker: linked '\<Playnite title\>' to '\<tracked name\>'."* and the popup
+closes. Confirm:
+
+```powershell
+Get-SaveLockerGames | Format-Table id, name, alias -AutoSize
+```
+
+Expect the baseline game's row now shows `alias` = `Nudge Rearm Test` (no new row was created — this
+tier links, it never enrolls).
+
+### 14. Cancel is always safe, and stays cancelled
+
+Add one final throwaway Custom Game entry, launch it, let its nudge fire, open the popup, and click
+**Cancel** (or the window's own titlebar close button) on whichever screen you land on. Expect: the
+window closes, `Get-SaveLockerGames` shows no new row and no changed `alias` anywhere. Launch that
+same entry again — expect the nudge does **not** reappear. That second part is a deliberate
+tradeoff already called out in `docs/CONTEXT.md`, not a bug: the nudge is marked shown the moment it
+fires, regardless of what the player does with it afterward, so a cancelled (or errored-out) attempt
+doesn't get a second automatic chance until Phase 13's right-click menu entry exists. Confirm it
+matches this expectation rather than treating it as a defect.
+
+### Cleanup (testenv)
+
+```powershell
+.\tests\testenv.ps1 clean -PlaynitePath C:\SaveLockerTest\Playnite
+```
+
+Per `clean`'s own header comment in `tests/testenv.ps1`: stops everything first, then deletes the
+WSL/Windows/Deck test state, the dashboard container/image/volume, **and**
+`C:\SaveLockerTest\Playnite\Extensions\SaveLocker` — only that one folder, never the rest of the
+portable Playnite install (its library, other extensions, and Playnite itself all stay). Your real
+`%AppData%\Playnite`, its real library, and your real SaveLocker agent (`%ProgramData%\SaveLocker`,
+port `:5178`) were never touched by any of the above. If you want the portable Playnite extraction
+itself gone too, delete `C:\SaveLockerTest\Playnite` by hand afterward — `clean` deliberately leaves
+it, the same way it leaves a Deck's real Playnite alone.
+
 ## Cleanup
 
 Stop both agent processes and the test server (Ctrl+C in each terminal), then delete
 `C:\SaveLockerTest\` entirely — nothing under it is real state. Your actual installed Playnite,
 its real library, and your real SaveLocker agent (`%ProgramData%\SaveLocker`, port `:5178`) were
-never touched by any of the above.
+never touched by any of the above. **(This is the fully-manual path's own cleanup — if you used
+`testenv.ps1` for Phase 12 above, use its `clean` command instead, just above.)**

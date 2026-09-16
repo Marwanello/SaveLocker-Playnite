@@ -13,6 +13,31 @@ the user's own account, distinct from the project's canonical `SkorcherX` org th
 under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `D:\Projects\SaveLocker\SaveLocker-Playnite`, next to `SaveLocker` and `SaveLocker-Decky`.
 
+## Status — Group 4 (Phase 12) built 2026-09-15, not yet hardware-verified
+
+The "Link to SaveLocker" enroll/link popup (`LinkToSaveLockerWindow.cs`) is implemented end to end —
+all five tiers (search tracked games, automatic manifest lookup, manual manifest search, manual
+folder browse via Playnite's own native `IDialogsFactory.SelectFolder()`, pick an existing tracked
+game), plus the Tier-4 "couldn't automatically match" nudge notification (`SaveLockerPlugin
+.MaybeShowLinkNudge`, `NudgeState.cs`) that's the only entry point into it today — the right-click
+menu entry point is Phase 13/Group 5, not built here.
+
+**Builds clean against the real installed Playnite SDK on this box** (`dotnet build` — 0 warnings, 0
+errors — and packed to a real `dist\SaveLocker.pext`). **Not yet hardware-verified**: nothing above has
+actually been loaded into a running Playnite, matched a real unmatched game, fired the nudge
+notification, or walked through enrolling/linking against a real test agent. `docs/Build and Run.md`
+now has a full Phase 12 manual-verification section (steps 7–14, right after the existing Phase 8–11
+walkthrough) — nudge-fires-once, nudge-suppressed-while-agent-down, all four tiers, cancel-stays-
+cancelled, and the alias-backfill check that confirms a linked game auto-matches on its next launch.
+That checklist is written but **not yet run** — whoever picks this up next should actually run it
+against a real portable Playnite + test agent.
+
+One deliberate deviation from `plan.md`'s own suggestion, worth knowing: the manual-folder-browse tier
+uses Playnite's native `IDialogsFactory.SelectFolder()` instead of embedding the agent-ui Add Games
+view in a WebView2 popup — confirmed via the Playnite SDK docs that `SelectFolder()` exists and does
+exactly what's needed, so this avoids a new dependency (WebView2 NuGet + runtime, copy-local packing)
+entirely in a project whose own `docs/Gotchas.md` already treats minimizing dependencies as a value.
+
 ## Status — Group 3 (Phases 8–11) shipped and hardware-verified, 2026-09-15
 
 `implementation-grouping.md`'s Group 3 — "the spine: scaffold, settings, core gate, matching" — is
@@ -78,14 +103,15 @@ specifically — the rest of the 6-step walkthrough is already confirmed.
 
 ## Next action
 
-1. Re-run `docs/Build and Run.md`'s steps 3 (lease held elsewhere, via the corrected WSL script) and
-   7 (Fullscreen mode) — the only two of the manual-verification walkthrough not yet reconfirmed since
-   this session's fixes.
-2. Once both are confirmed: move this session's write-up into `docs/logs/` (main repo's
-   `docs/progress.md`/`docs/session_summary.md` already have the full technical detail).
-3. Group 4 (Phase 12, the enroll/link popup) is next per `implementation-grouping.md`'s recommended
-   order.
+1. Hardware-verify Group 4 by actually running `docs/Build and Run.md`'s new "Phase 12 manual
+   verification" section (steps 7–14) against a real portable Playnite + test agent.
+2. Re-run `docs/Build and Run.md`'s steps 3 (lease held elsewhere) and 7 (Fullscreen mode) from the
+   Group 3 write-up below if they still haven't been reconfirmed since those fixes.
+3. Once Group 4 is hardware-verified: update `implementation-grouping.md`'s Group 4 row in the main
+   repo to `✅ Done`, and move this session's write-up into `docs/logs/`.
+4. Group 5 (Phases 13–15 + 17 — status chip/buttons, self-update consumption, test infra, release CI)
+   is next per `implementation-grouping.md`'s recommended order.
 
-Already done this session: the `InstallDir` change is pushed and PR'd
+Already done in the Group 3 session: the `InstallDir` change is pushed and PR'd
 (`Marwanello/SaveLocker#38`); `implementation-grouping.md`'s Group 3 row in the main repo is marked
-`✅ Done`; this plugin's own PR is open (`Marwanello/SaveLocker-Playnite#1`).
+`✅ Done`; that session's plugin PR is open (`Marwanello/SaveLocker-Playnite#1`).
