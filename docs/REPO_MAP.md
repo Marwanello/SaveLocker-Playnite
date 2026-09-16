@@ -12,10 +12,28 @@ SaveLocker-Playnite/
 │   ├── SaveLocker.Playnite.csproj  # net462, SDK-style. References Playnite.SDK.dll from the real
 │   │                               #   installed Playnite (HintPath), not NuGet — docs/Gotchas.md.
 │   ├── SaveLockerPlugin.cs         # GenericPlugin entry point. OnGameStarting (pre-launch gate),
-│   │                               #   OnGameStopped (post-exit push), GetSettings/GetSettingsView.
-│   │                               #   Holds no sync rules — calls LocalApiClient and acts on the
-│   │                               #   LaunchDecision it gets back, fail-open except on Blocked.
+│   │                               #   OnGameStopped (post-exit push), GetSettings/GetSettingsView,
+│   │                               #   GetGameMenuItems (Link to SaveLocker / Sync now / Resolve
+│   │                               #   conflict…, Phase 13), OnApplicationStarted's self-update check
+│   │                               #   (Phase 14, GET /api/playnite-plugin — surfaces a restart notice
+│   │                               #   when the agent has a newer package waiting). Holds no sync
+│   │                               #   rules — calls LocalApiClient and acts on the LaunchDecision it
+│   │                               #   gets back, fail-open except on Blocked.
 │   ├── GameMatcher.cs              # Phase 11: Steam AppID → InstallDir → name/Alias chain.
+│   ├── LinkAction.cs               # The "click and link" chain behind the right-click menu: try
+│   │                               #   automatic match/enroll first, fall back to LinkToSaveLockerWindow
+│   │                               #   only when nothing resolves. (A GetGameViewControl status-chip
+│   │                               #   control, GameStatusControl, called into this too but was removed
+│   │                               #   — see SaveLockerPlugin.cs's comment above GetGameMenuItems.)
+│   ├── LinkedTag.cs                # Marks a linked game with a "SaveLocker: Linked" Tag — the one
+│   │                               #   theme-independent per-game visual hook the SDK actually has.
+│   ├── SyncNowAction.cs            # "Sync now": runs the same pre-launch-sync gate OnGameStarting
+│   │                               #   does, as a toast-driven on-demand action instead of a launch
+│   │                               #   block. Shared by LinkAction's post-link offer and the right-click
+│   │                               #   menu.
+│   ├── ConflictResolver.cs         # The interactive "this device / the cloud" flow shared by
+│   │                               #   OnGameStarting (blocking) and SyncNowAction/the right-click menu
+│   │                               #   (non-blocking async overload).
 │   ├── LocalApiClient.cs           # HttpClient wrapper for the agent's local API (:5178). Reads
 │   │                               #   the X-SaveLocker-Token from <StateDir>\api-token per call.
 │   ├── Contracts.cs                # Plain POCOs mirroring the agent's DTOs, each with a
@@ -41,14 +59,32 @@ SaveLocker-Playnite/
 │                                   #   docs/Gotchas.md).
 ├── dist/SaveLocker.pext            # Hand-packed (Toolbox.exe is broken here — docs/Gotchas.md).
 │                                   #   Gitignored; rebuild with docs/Build and Run.md's pack step.
+├── tests/SaveLocker.Playnite.Tests/ # Phase 15: xUnit, net462. GameMatcherTests (pure logic, no
+│   │                               #   Playnite host needed — the Steam-AppID tier is the one
+│   │                               #   deliberate gap, see its own doc comment) and
+│   │                               #   LocalApiClientTests (an HttpListener-backed stub of the
+│   │                               #   agent's local API — token header, JSON parsing, the
+│   │                               #   tolerateConflict 409 split). `dotnet test
+│   │                               #   tests\SaveLocker.Playnite.Tests\SaveLocker.Playnite.Tests.csproj`.
+│   │                               #   Needs the real installed Playnite too (Playnite.SDK.dll,
+│   │                               #   same as `src/`) — this is the automated half of Phase 15;
+│   │                               #   the manual/hardware half is docs/Build and Run.md's own
+│   │                               #   walkthrough, which nothing here replaces.
 ├── scripts/Install-ToPortable.ps1  # Build + copy straight into <PlaynitePath>\Extensions\SaveLocker
 │                                   #   for any Playnite install root, portable or real — skips the
 │                                   #   .pext pack/install round trip. docs/Build and Run.md.
 ├── docs/                           # This small vault. CONTEXT.md + REPO_MAP.md + Gotchas.md +
 │                                   #   Build and Run.md + logs/ — see AGENTS.md for when to read each.
-├── .github/workflows/              # Empty for now — no CI here yet (nothing to build headlessly
-│                                   #   verify beyond `dotnet build`; real verification is manual,
-│                                   #   hardware-only, per the main repo's plan.md).
+├── .github/workflows/release.yml   # Phase 17: on a v* tag, fetches Playnite.SDK.dll from Playnite's
+│                                   #   own portable release (not published to NuGet — docs/Gotchas.md),
+│                                   #   builds, zips extension.yaml + the DLL as SaveLocker.zip (also
+│                                   #   published as SaveLocker.pext for a human installer), and
+│                                   #   publishes both plus SHA256SUMS.txt — the exact filenames
+│                                   #   AgentInstallerService.cs's PlaynitePlugin slot and
+│                                   #   VerifyHashAsync (main repo) expect. Nothing else here runs in
+│                                   #   CI — a real Playnite install is still needed for `dotnet build`/
+│                                   #   `dotnet test` locally, and real verification stays manual,
+│                                   #   hardware-only, per the main repo's plan.md.
 ├── AGENTS.md · .agents/AGENTS.md · CLAUDE.md   # Agent instructions
 ├── LICENSE                         # PolyForm Noncommercial 1.0.0, same as SaveLocker/SaveLocker-Decky
 └── README.md

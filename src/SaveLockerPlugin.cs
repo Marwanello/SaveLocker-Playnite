@@ -46,24 +46,20 @@ namespace SaveLocker.Playnite
             return new SaveLockerSettingsView(settingsViewModel);
         }
 
-        // Asked for directly, after Tier 4's nudge (below) turned out to be too easy to miss: an
-        // always-visible control on the game details view rather than something a player only sees
-        // after playing an unlinked game once. Ignores args.Name/Mode and always returns the same
-        // control — this plugin exposes exactly one view control, so there is nothing to switch on.
-        // THEME-DEPENDENT — confirmed not rendered under Harmony, this project's own verification
-        // theme; see LinkStatusButton's own doc comment. GetGameMenuItems below is the reliable
-        // equivalent every theme supports, since Playnite owns that menu itself.
-        public override Control GetGameViewControl(GetGameViewControlArgs args)
-        {
-            return new LinkStatusButton(PlayniteApi, client);
-        }
-
-        // The theme-independent equivalent of the button above — Playnite renders its own right-click
-        // menu regardless of what the active theme's XAML does or doesn't wire up. Deliberately no
-        // synchronous "is this already linked" check here: building this list runs every time a
-        // player right-clicks anything, and blocking that on a network call to show a checkmark would
-        // make every right-click feel laggy. LinkAction.RunAsync itself reports "already tracked" via
-        // a toast if the click turns out to be a no-op.
+        // A GetGameViewControl-based status chip was built and removed again: Playnite only ever calls
+        // GetGameViewControl for a plugin that both registers via AddCustomElementSupport (this plugin
+        // never has) and whose active theme's XAML names a matching ContentControl for it — confirmed
+        // against Playnite's own source (ControlTemplateTools.InitializePluginControls) that no stock
+        // theme, Harmony or Default included, defines one for SaveLocker. There is no code fix for
+        // that; it would need a theme author to add the slot, or SaveLocker shipping its own theme.
+        // GetGameMenuItems below is the reliable, theme-independent surface every theme supports,
+        // since Playnite owns that menu itself.
+        // Deliberately no synchronous "what's the current state" check to decide which items to show
+        // (tasks/playnite-plugin/plan.md Phase 13's "GetGameMenuItems... run every time a player
+        // right-clicks anything"): building this list must not block on a network call, so all three
+        // items are always present and each reports its own no-op via a toast (LinkAction already
+        // does this for "already tracked"; Sync now/Resolve conflict below do the same for "not
+        // linked" and "no open conflict").
         public override IEnumerable<GameMenuItem> GetGameMenuItems(GetGameMenuItemsArgs args)
         {
             yield return new GameMenuItem
@@ -82,6 +78,104 @@ namespace SaveLocker.Playnite
                         await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
                 },
             };
+            yield return new GameMenuItem
+            {
+                Description = "Sync now",
+                MenuSection = "SaveLocker",
+                Action = async a =>
+                {
+                    foreach (var game in a.Games)
+                        await RunSyncNowAsync(game).ConfigureAwait(true);
+                },
+            };
+            yield return new GameMenuItem
+            {
+                Description = "Resolve conflict…",
+                MenuSection = "SaveLocker",
+                // Same not-Task.Run reasoning as above — ResolveInteractivelyAsync ends in a WPF
+                // window when a conflict is actually found.
+                Action = async a =>
+                {
+                    foreach (var game in a.Games)
+                        await RunResolveConflictAsync(game).ConfigureAwait(true);
+                },
+            };
+        }
+
+        // "Sync now" from the right-click menu — a game not yet linked offers to link it instead of
+        // silently doing nothing, since this item has no way to hide itself per-game (see
+        // GetGameMenuItems' own doc comment on why the list can't check state first). A dialog, not a
+        // notification: asked for directly — a toast is easy to miss and gives no instant feedback,
+        // where a modal is impossible to miss and blocks exactly long enough to read.
+        private async Task RunSyncNowAsync(Game game)
+        {
+            var match = await FindMatchAsync(game).ConfigureAwait(true);
+            if (match.Tracked != null) { await SyncNowAction.RunAsync(PlayniteApi, client, match.Tracked).ConfigureAwait(true); return; }
+
+            if (!match.AgentReachable) { ShowAgentUnreachableDialog(); return; }
+            await OfferLinkAsync(game).ConfigureAwait(true);
+        }
+
+        // "Resolve conflict…" from the right-click menu — reads the game's current sync-status rather
+        // than running a fresh pre-launch-sync, since the point of this item is jumping straight to an
+        // ALREADY-confirmed conflict without re-triggering a sync cycle (SyncEngine.GetSyncStatusAsync
+        // is a cheap, no-download comparison; see LocalApiClient.GetSyncStatusAsync's own doc comment).
+        // Every outcome is a dialog, not a notification — same reasoning as RunSyncNowAsync above: an
+        // unlinked game says so (with the same Link/Cancel offer), an already-linked game with nothing
+        // open says "No conflicts found" rather than staying silent, so the player always gets an
+        // immediate, unmissable answer to "what happened" instead of having to notice a toast.
+        private async Task RunResolveConflictAsync(Game game)
+        {
+            var match = await FindMatchAsync(game).ConfigureAwait(true);
+            var tracked = match.Tracked;
+            if (tracked == null)
+            {
+                if (!match.AgentReachable) { ShowAgentUnreachableDialog(); return; }
+                await OfferLinkAsync(game).ConfigureAwait(true);
+                return;
+            }
+
+            SyncStatusDto status;
+            try { status = await client.GetSyncStatusAsync(tracked.Id).ConfigureAwait(true); }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "SaveLocker: couldn't check sync status for Resolve conflict");
+                ShowAgentUnreachableDialog();
+                return;
+            }
+
+            if (!status.HasOpenConflict || !status.ConflictId.HasValue)
+            {
+                PlayniteApi.Dialogs.ShowMessage(
+                    $"No conflicts found for \"{tracked.Name}\".",
+                    "SaveLocker — resolve conflict", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            await ConflictResolver.ResolveInteractivelyAsync(PlayniteApi, client, tracked.Name, status.ConflictId.Value).ConfigureAwait(true);
+        }
+
+        // Shared by both menu items above: "this game isn't linked yet" with a Link button that runs
+        // the same automatic match/enroll-then-fallback-to-picker chain the "Link to SaveLocker" menu
+        // item itself uses, and a Cancel button that does nothing. MessageBoxOption's own Title is the
+        // literal button text — this is a genuine two-button choice, not a MessageBoxButton preset
+        // (OK/Cancel, Yes/No, …), because neither preset's wording fits "Link".
+        private async Task OfferLinkAsync(Game game)
+        {
+            var link = new MessageBoxOption("Link", true, false);
+            var cancel = new MessageBoxOption("Cancel", false, true);
+            var choice = PlayniteApi.Dialogs.ShowMessage(
+                $"\"{game.Name}\" isn't linked to SaveLocker yet.",
+                "SaveLocker — not linked", System.Windows.MessageBoxImage.Information, new List<MessageBoxOption> { link, cancel });
+            if (choice == link)
+                await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
+        }
+
+        private void ShowAgentUnreachableDialog()
+        {
+            PlayniteApi.Dialogs.ShowMessage(
+                "SaveLocker: couldn't reach the agent.",
+                "SaveLocker", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
         }
 
         public override void OnGameStarting(OnGameStartingEventArgs args)
@@ -195,6 +289,38 @@ namespace SaveLocker.Playnite
                     Logger.Warn(ex, "SaveLocker: couldn't backfill linked tags on startup");
                 }
             });
+            Task.Run(() => CheckSelfUpdateAsync());
+        }
+
+        /// <summary>
+        /// Phase 14 — self-update consumption. Asks GET /api/playnite-plugin (the agent's own
+        /// PlaynitePlugin.CheckAsync, check-only) whether a newer package is waiting; the agent's own
+        /// recurring timer already refuses to write files while Playnite is running
+        /// (Agent.PlaynitePlugin.IsPlayniteRunning), so from inside a live Playnite process "Available"
+        /// always means exactly one thing: close and reopen Playnite so the agent can apply it. The
+        /// outcome's own Message already reads like that instruction (its "close Playnite first"
+        /// branch, verified against the agent's own doc comment) — nothing extra to compose here.
+        /// Checked once per Playnite session; a long-running session that never restarts won't see a
+        /// later-arriving version until its next launch, which is an acceptable gap for a notice whose
+        /// entire point is "restart me."
+        /// </summary>
+        private async Task CheckSelfUpdateAsync()
+        {
+            try
+            {
+                var status = await client.GetPlaynitePluginStatusAsync().ConfigureAwait(false);
+                if (status.State == "Available")
+                {
+                    PlayniteApi.Notifications.Add(new NotificationMessage(
+                        "savelocker-plugin-update", "SaveLocker: " + status.Message, NotificationType.Info));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Fail open, same as everywhere else — an unreachable agent just means no notice this
+                // session, not an error worth surfacing to the player.
+                Logger.Warn(ex, "SaveLocker: couldn't check for a plugin update");
+            }
         }
 
         public override void OnGameStopped(OnGameStoppedEventArgs args)
@@ -238,6 +364,34 @@ namespace SaveLocker.Playnite
                 // Agent unreachable/not running — same as an untracked game, no gate at all.
                 Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
                 return null;
+            }
+        }
+
+        // Plain class, not an out parameter — an async method can't have one. Same reasoning as
+        // ConflictResolver.FetchedDetails for using a plain class instead of a C# 7 named tuple on
+        // net462. Async equivalent of FindMatch above, for callers that run on the UI thread and must
+        // not block it (RunSyncNowAsync/RunResolveConflictAsync, from GetGameMenuItems' async lambda —
+        // see LinkAction.RunAsync's own doc comment on why blocking there is the one thing to avoid).
+        // FindMatch itself stays as-is for OnGameStarting/OnGameStopped, which either already run
+        // inside a modal progress dialog or off the UI thread via Task.Run.
+        private sealed class GameMatchResult
+        {
+            public TrackedGameDto Tracked;
+            public bool AgentReachable;
+        }
+
+        private async Task<GameMatchResult> FindMatchAsync(Game game)
+        {
+            try
+            {
+                var tracked = await client.GetGamesAsync().ConfigureAwait(true);
+                return new GameMatchResult { Tracked = GameMatcher.FindMatch(game, tracked), AgentReachable = true };
+            }
+            catch (Exception ex)
+            {
+                // Agent unreachable/not running — same as an untracked game, no gate at all.
+                Logger.Warn(ex, "SaveLocker: couldn't reach the agent to match this game");
+                return new GameMatchResult();
             }
         }
 

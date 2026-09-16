@@ -1,0 +1,43 @@
+name: Build and test the Playnite plugin
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+# Runs the plugin's build + Phase 15 test suite on every push/PR, not just on a release tag —
+# release.yml's own Build step never ran `dotnet test`, so nothing caught a regression in
+# GameMatcher/LocalApiClient before a tag was pushed. Same action pins as release.yml, for the same
+# reason (a tag is a moving pointer the action's owner can repoint at any time).
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9  # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # Same as release.yml's own step — Playnite.SDK.dll is not on NuGet (docs/Gotchas.md), and both
+      # the plugin and the test project's csproj reference it via the real installed Playnite's
+      # %LocalAppData%\Playnite\Playnite.SDK.dll HintPath.
+      - name: Fetch Playnite.SDK.dll
+        shell: pwsh
+        run: |
+          choco install 7zip -y --no-progress | Out-Null
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/JosefNemec/Playnite/releases/latest" -Headers @{ "User-Agent" = "SaveLocker-Playnite-CI" }
+          $asset = $release.assets | Where-Object { $_.name -like "*.7z" } | Select-Object -First 1
+          if (-not $asset) { throw "No .7z portable asset found on the latest Playnite release." }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile playnite-portable.7z
+          $sdkDir = "$env:LocalAppData\Playnite"
+          New-Item -ItemType Directory -Force $sdkDir | Out-Null
+          & 7z e playnite-portable.7z Playnite.SDK.dll "-o$sdkDir" -y
+          if (-not (Test-Path "$sdkDir\Playnite.SDK.dll")) { throw "Playnite.SDK.dll was not extracted." }
+
+      - name: Build
+        run: dotnet build src\SaveLocker.Playnite.csproj -c Release
+
+      - name: Test
+        run: dotnet test tests\SaveLocker.Playnite.Tests\SaveLocker.Playnite.Tests.csproj -c Release

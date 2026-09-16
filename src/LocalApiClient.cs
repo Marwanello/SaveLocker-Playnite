@@ -123,6 +123,15 @@ namespace SaveLocker.Playnite
             await SendAsync<object>(HttpMethod.Post, $"/api/games/{gameId}/post-exit-sync", new { }, o => null, ct, tolerateConflict: true, timeout: TimeSpan.FromMinutes(10)).ConfigureAwait(false);
         }
 
+        // Powers SaveLockerPlugin's "Resolve conflict…" dialog (tasks/playnite-plugin/plan.md's "Game
+        // page" section): a cheap, no-download comparison of the local save against the cloud head,
+        // plus whether an open conflict already exists, so the menu item can state "no conflicts
+        // found" or open the real resolve window without a fresh pre-launch-sync round trip.
+        public async Task<SyncStatusDto> GetSyncStatusAsync(Guid gameId, CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Get, $"/api/games/{gameId}/sync-status", null, o => SyncStatusDto.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
+        }
+
         public async Task<ConflictDto> GetConflictAsync(Guid conflictId, CancellationToken ct = default(CancellationToken))
         {
             return await SendAsync(HttpMethod.Get, $"/api/conflicts/{conflictId}", null, o => ConflictDto.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
@@ -176,6 +185,15 @@ namespace SaveLocker.Playnite
         {
             return await SendAsync(HttpMethod.Post, "/api/enroll", new { ids = new[] { candidateId } },
                 o => EnrollResult.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
+        }
+
+        // tasks/playnite-plugin/plan.md, Phase 14 — "is a newer version of me waiting on the server."
+        // Touches the network on the far side (Agent.PlaynitePlugin.CheckAsync), so it gets a longer
+        // timeout than the ordinary local-only calls above; still bounded, since this only ever runs
+        // once at OnApplicationStarted and must not hang Playnite's own startup indefinitely.
+        public async Task<PlaynitePluginStatusDto> GetPlaynitePluginStatusAsync(CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Get, "/api/playnite-plugin", null, o => PlaynitePluginStatusDto.FromJson(Json.AsObject(o)), ct, timeout: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
         }
     }
 }

@@ -100,6 +100,26 @@ namespace SaveLocker.Playnite
         }
     }
 
+    /// <summary>SaveLocker/src/Shared/Contracts.cs's <c>SyncStatusDto</c> — "is my local save the same
+    /// as the cloud's, without downloading it," the cheap check the status chip polls
+    /// (tasks/playnite-plugin/plan.md, "Game page" section).</summary>
+    internal sealed class SyncStatusDto
+    {
+        public bool InSync;
+        public bool HasOpenConflict;
+        public Guid? ConflictId;
+
+        public static SyncStatusDto FromJson(IDictionary<string, object> o)
+        {
+            return new SyncStatusDto
+            {
+                InSync = Json.GetBool(o, "inSync"),
+                HasOpenConflict = Json.GetBool(o, "hasOpenConflict"),
+                ConflictId = Json.GetNullableGuid(o, "conflictId"),
+            };
+        }
+    }
+
     internal sealed class ConflictDto
     {
         public Guid Id;
@@ -188,6 +208,27 @@ namespace SaveLocker.Playnite
             {
                 Enrolled = Json.GetInt(o, "enrolled"),
                 Skipped = Json.GetInt(o, "skipped"),
+            };
+        }
+    }
+
+    /// <summary>SaveLocker/src/Agent.Core/AgentApiServer.cs's <c>PlaynitePluginStatusDto</c> — GET
+    /// /api/playnite-plugin's answer to "is a newer version of me waiting on the server"
+    /// (tasks/playnite-plugin/plan.md, Phase 14). <see cref="State"/> mirrors
+    /// <c>Agent.PlaynitePluginState</c>'s name as a plain string (NoPlaynite/NotInstalled/UpToDate/
+    /// Available/Failed/NotApplicable) — only "Available" matters to this plugin; the others are
+    /// either not-applicable-to-a-running-instance-of-itself or nothing to act on.</summary>
+    internal sealed class PlaynitePluginStatusDto
+    {
+        public string State;
+        public string Message;
+
+        public static PlaynitePluginStatusDto FromJson(IDictionary<string, object> o)
+        {
+            return new PlaynitePluginStatusDto
+            {
+                State = Json.GetString(o, "state"),
+                Message = Json.GetString(o, "message"),
             };
         }
     }

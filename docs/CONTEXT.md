@@ -13,6 +13,93 @@ the user's own account, distinct from the project's canonical `SkorcherX` org th
 under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `D:\Projects\SaveLocker\SaveLocker-Playnite`, next to `SaveLocker` and `SaveLocker-Decky`.
 
+## Status — Group 5 (Phases 13-15+17) built 2026-09-16, not yet hardware-verified
+
+`implementation-grouping.md`'s Group 5 — "status surface + self-update + test infra + release CI" —
+is implemented end to end and builds clean, but nothing in it has run inside a real, live Playnite yet.
+
+- **Phase 13 (status chip + action buttons) — built, then removed as confirmed dead code.**
+  `GameStatusControl` originally replaced Group 4's binary Link/Synced `LinkStatusButton` with a real
+  status surface: Not linked / Agent offline / Not synced yet / In sync / Conflict, each with one
+  contextual action button. A user report of no chip under Playnite's stock **Default** theme (not
+  just Harmony, which had been assumed the one exception) prompted checking Playnite's own source
+  directly (`ControlTemplateTools.InitializePluginControls`): `GetGameViewControl` only ever fires for
+  a plugin that both registers via `AddCustomElementSupport` (SaveLocker never has) *and* whose active
+  theme's XAML names a matching `ContentControl` slot for it — true of no stock theme, Default
+  included. There is no code fix for that; it would need a theme author to add the slot, or SaveLocker
+  to ship its own theme. Neither is realistic right now, so `GameStatusControl.cs` and the
+  `GetGameViewControl` override were removed outright (commit `5498ee7`) rather than kept as permanent
+  dead code. `GetGameMenuItems`'s "Sync now"/"Resolve conflict…"/"Link to SaveLocker" and the
+  `SaveLocker: Linked` Tag remain — both are genuinely theme-independent. **One deviation from
+  `plan.md` that still applies to "Sync now," worth knowing before anyone goes looking for separate
+  Push/Pull buttons**: the agent's local API has no per-game push-only or pull-only route — only
+  `pre-launch-sync` (push-then-pull-or-block, wrapped as "Sync now" by Group 4's `SyncNowAction`) and
+  `post-exit-sync` (fires automatically, not a button's job). Adding new agent-side routes was judged
+  out of this group's plugin-side scope, so one "Sync now" item covers both halves instead of two.
+- **Follow-up (commit `c3273be`): dialog-based feedback for "Sync now"/"Resolve conflict…".** Per an
+  explicit UX request, both menu items now always open a real dialog stating the outcome instead of a
+  notification (which the user pointed out gives no instant feedback): "Sync now" on an unlinked game
+  shows a "'{game}' isn't linked to SaveLocker yet." dialog with Link/Cancel buttons (Link runs the
+  same auto-match/enroll chain as "Link to SaveLocker"); "Resolve conflict…" shows the same dialog when
+  unlinked, "No conflicts found for '{game}'" when linked with nothing open, or the real resolve window
+  when a conflict exists; agent-unreachable is now a dialog too (shared by both items). Uses
+  `IDialogsFactory.ShowMessage(..., List<MessageBoxOption>)` with `MessageBoxOption(title, isDefault,
+  isCancel)` for the literal Link/Cancel pair — confirmed via reflecting `Playnite.SDK.dll` directly.
+- **Phase 14 (plugin-side self-update consumption).** New agent-side `GET /api/playnite-plugin`
+  (main repo, commit `31f8b9b` on `claude/group-5-playnite-plugin-3d3aae` — **not yet merged to
+  main**, needs a PR) mirrors `/api/decky`'s shape but calls `PlaynitePlugin.CheckAsync(apply:false)`,
+  since the answer genuinely depends on the server. `OnApplicationStarted` calls it once per session
+  and surfaces a restart notice when the agent has a newer package waiting — no new branching needed,
+  since a check running from inside a live Playnite process always hits `CheckAsync`'s own
+  "close Playnite first" message. **Verified live**: the new route was exercised against a real
+  scratch server + registered Windows agent and returned a correct `NotInstalled` status reflecting
+  this box's actual (plugin-less) Playnite install. The plugin's own consumption of it has not been
+  run inside a real Playnite session.
+- **Phase 15 (test infrastructure).** New `tests/SaveLocker.Playnite.Tests` (xUnit, net462), 25/25
+  passing. Turned out to be a smaller gap than `plan.md` sized it: the portable-Playnite `testenv`
+  target and the Windows `seed-test-conflict` equivalent it also calls for were **already shipped** in
+  the main repo's `9397e9d` ("Playnite plugin test-rig integration," 2026-09-15/16, before this
+  session) — `testenv.ps1 build/up/status/clean -PlaynitePath ...` and `testenv.ps1 conflict -Windows
+  -Wsl` already do that job. This session's actual gap was purely the "automated coverage stays cheap"
+  half: `GameMatcherTests` (pure logic — InstallDir/name/Alias tiers, the ambiguous-tier-stops rule,
+  `FindByPathOrName`, `MapStore`; **deliberately not** the Steam AppID tier, confirmed by reflection
+  that `Game.Source` always resolves null outside a live Playnite database) and `LocalApiClientTests`
+  (an `HttpListener` stub of the local API — token header, JSON parsing, the `tolerateConflict` 409
+  split). `SaveLocker.Playnite.csproj` gained `<InternalsVisibleTo>` for the test assembly; no other
+  production change.
+- **Phase 17 (release CI workflow).** New `.github/workflows/release.yml` — this repo had **no**
+  `.github/workflows` at all before this. On a `v*` tag: fetches `Playnite.SDK.dll` from Playnite's
+  own portable `.7z` release (not on NuGet — confirmed by actually downloading the real 10.60 release
+  and listing it with `7z l` that the DLL sits flat at the archive root before writing the extraction
+  step around that fact), builds, packages `extension.yaml` + the DLL as both `SaveLocker.zip` and
+  `SaveLocker.pext` (identical bytes), and publishes both plus `SHA256SUMS.txt`. **The filenames are
+  load-bearing, not a style choice** — traced the main repo's `AgentInstallerService.cs` first:
+  the `PlaynitePlugin` slot's asset filter requires a name starting with "SaveLocker" and ending
+  `.zip`, and `VerifyHashAsync` looks up that exact filename inside a `SHA256SUMS*.txt` asset in the
+  same release. **Verified further than "it parses"**: built this plugin locally against the
+  freshly-downloaded Playnite SDK 6.17.0.0 (one minor ahead of this box's installed 6.16.0.0,
+  via `-p:LocalAppData=<scratch>` so the real install was never touched) — 0 warnings, 0 errors.
+  **Not run for real**: pushing an actual tag needs the user's go-ahead (a real GitHub Release, real
+  Actions minutes) — not done in this session.
+
+**Not done, on purpose, this session**: no hardware verification at all (nothing above has been
+loaded into a running Playnite); Phase 16 (add-on database submission) is untouched, per
+`implementation-grouping.md`'s own reasoning for keeping it last and separate.
+
+**Branch: `playnite-plugin-group-5`, PR opened.** Seven commits: `77ab148` (Phase 13), `09a7532` (14),
+`3f5352a` (15), `20e690d` (17), `dd6ae86` (docs), `c3273be` (dialog-based sync/conflict feedback
+follow-up), `5498ee7` (removed the dead `GameStatusControl` status chip).
+
+**Whoever picks this up next:**
+1. Hardware-verify against a real portable Playnite + test agent: the right-click menu items and their
+   new dialogs (Phase 13 + the `c3273be` follow-up), the restart notice actually appearing when a
+   plugin update is deliberately staged server-side (Phase 14).
+2. Push a real `v*` tag once ready to actually exercise Phase 17's workflow end to end, and confirm
+   the agent's self-updater can fetch and verify what it produces — the one piece of this whole plugin
+   that has never been tested against a real release.
+3. Group 6 (Phase 16, add-on database submission) is next per `implementation-grouping.md`'s
+   recommended order, once Group 5 is hardware-verified.
+
 ## Status — Group 4 (Phase 12) built 2026-09-15, not yet hardware-verified
 
 The "Link to SaveLocker" enroll/link popup (`LinkToSaveLockerWindow.cs`) is implemented end to end —
