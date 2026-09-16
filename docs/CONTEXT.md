@@ -18,16 +18,33 @@ under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `implementation-grouping.md`'s Group 5 — "status surface + self-update + test infra + release CI" —
 is implemented end to end and builds clean, but nothing in it has run inside a real, live Playnite yet.
 
-- **Phase 13 (status chip + action buttons).** `GameStatusControl` replaces Group 4's binary
-  Link/Synced `LinkStatusButton` with a real status surface: Not linked / Agent offline / Not synced
-  yet / In sync / Conflict, each with one contextual action button. `GetGameMenuItems` gained "Sync
-  now" and "Resolve conflict…" alongside the existing "Link to SaveLocker". **One deliberate deviation
-  from `plan.md`, worth knowing before anyone goes looking for separate Push/Pull buttons**: the
-  agent's local API has no per-game push-only or pull-only route — only `pre-launch-sync`
-  (push-then-pull-or-block, already wrapped as "Sync now" by Group 4's `SyncNowAction`) and
+- **Phase 13 (status chip + action buttons) — built, then removed as confirmed dead code.**
+  `GameStatusControl` originally replaced Group 4's binary Link/Synced `LinkStatusButton` with a real
+  status surface: Not linked / Agent offline / Not synced yet / In sync / Conflict, each with one
+  contextual action button. A user report of no chip under Playnite's stock **Default** theme (not
+  just Harmony, which had been assumed the one exception) prompted checking Playnite's own source
+  directly (`ControlTemplateTools.InitializePluginControls`): `GetGameViewControl` only ever fires for
+  a plugin that both registers via `AddCustomElementSupport` (SaveLocker never has) *and* whose active
+  theme's XAML names a matching `ContentControl` slot for it — true of no stock theme, Default
+  included. There is no code fix for that; it would need a theme author to add the slot, or SaveLocker
+  to ship its own theme. Neither is realistic right now, so `GameStatusControl.cs` and the
+  `GetGameViewControl` override were removed outright (commit `5498ee7`) rather than kept as permanent
+  dead code. `GetGameMenuItems`'s "Sync now"/"Resolve conflict…"/"Link to SaveLocker" and the
+  `SaveLocker: Linked` Tag remain — both are genuinely theme-independent. **One deviation from
+  `plan.md` that still applies to "Sync now," worth knowing before anyone goes looking for separate
+  Push/Pull buttons**: the agent's local API has no per-game push-only or pull-only route — only
+  `pre-launch-sync` (push-then-pull-or-block, wrapped as "Sync now" by Group 4's `SyncNowAction`) and
   `post-exit-sync` (fires automatically, not a button's job). Adding new agent-side routes was judged
-  out of this group's plugin-side scope, so one "Sync now" button covers both halves instead of two.
-  Full reasoning in `GameStatusControl`'s own doc comment.
+  out of this group's plugin-side scope, so one "Sync now" item covers both halves instead of two.
+- **Follow-up (commit `c3273be`): dialog-based feedback for "Sync now"/"Resolve conflict…".** Per an
+  explicit UX request, both menu items now always open a real dialog stating the outcome instead of a
+  notification (which the user pointed out gives no instant feedback): "Sync now" on an unlinked game
+  shows a "'{game}' isn't linked to SaveLocker yet." dialog with Link/Cancel buttons (Link runs the
+  same auto-match/enroll chain as "Link to SaveLocker"); "Resolve conflict…" shows the same dialog when
+  unlinked, "No conflicts found for '{game}'" when linked with nothing open, or the real resolve window
+  when a conflict exists; agent-unreachable is now a dialog too (shared by both items). Uses
+  `IDialogsFactory.ShowMessage(..., List<MessageBoxOption>)` with `MessageBoxOption(title, isDefault,
+  isCancel)` for the literal Link/Cancel pair — confirmed via reflecting `Playnite.SDK.dll` directly.
 - **Phase 14 (plugin-side self-update consumption).** New agent-side `GET /api/playnite-plugin`
   (main repo, commit `31f8b9b` on `claude/group-5-playnite-plugin-3d3aae` — **not yet merged to
   main**, needs a PR) mirrors `/api/decky`'s shape but calls `PlaynitePlugin.CheckAsync(apply:false)`,
@@ -69,22 +86,18 @@ is implemented end to end and builds clean, but nothing in it has run inside a r
 loaded into a running Playnite); Phase 16 (add-on database submission) is untouched, per
 `implementation-grouping.md`'s own reasoning for keeping it last and separate.
 
-**Branch: `playnite-plugin-group-5`, in a worktree at
-`.claude/worktrees/playnite-plugin-group-5`, not yet pushed or opened as a PR** — this session
-stopped short of that (publishing is not this session's call to make unprompted). Four commits, one
-per phase: `77ab148` (13), `09a7532` (14), `3f5352a` (15), `20e690d` (17).
+**Branch: `playnite-plugin-group-5`, PR opened.** Seven commits: `77ab148` (Phase 13), `09a7532` (14),
+`3f5352a` (15), `20e690d` (17), `dd6ae86` (docs), `c3273be` (dialog-based sync/conflict feedback
+follow-up), `5498ee7` (removed the dead `GameStatusControl` status chip).
 
 **Whoever picks this up next:**
-1. Push `31f8b9b` (the `GET /api/playnite-plugin` companion change) in the main repo and open a PR —
-   Phase 14 depends on it once this repo's own branch merges.
-2. Push `playnite-plugin-group-5` and open a PR here.
-3. Hardware-verify against a real portable Playnite + test agent: the status chip/menu items (Phase
-   13), the restart notice actually appearing when a plugin update is deliberately staged server-side
-   (Phase 14).
-4. Push a real `v*` tag once ready to actually exercise Phase 17's workflow end to end, and confirm
+1. Hardware-verify against a real portable Playnite + test agent: the right-click menu items and their
+   new dialogs (Phase 13 + the `c3273be` follow-up), the restart notice actually appearing when a
+   plugin update is deliberately staged server-side (Phase 14).
+2. Push a real `v*` tag once ready to actually exercise Phase 17's workflow end to end, and confirm
    the agent's self-updater can fetch and verify what it produces — the one piece of this whole plugin
    that has never been tested against a real release.
-5. Group 6 (Phase 16, add-on database submission) is next per `implementation-grouping.md`'s
+3. Group 6 (Phase 16, add-on database submission) is next per `implementation-grouping.md`'s
    recommended order, once Group 5 is hardware-verified.
 
 ## Status — Group 4 (Phase 12) built 2026-09-15, not yet hardware-verified
