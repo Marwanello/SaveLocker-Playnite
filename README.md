@@ -8,6 +8,14 @@ same guarantee the Linux agent's `savelocker run -- %command%` wrapper already g
 talks to the agent's local API on `localhost:5178`; with no agent reachable it fails **open** —
 games always launch, SaveLocker is never the reason one won't start.
 
+**Compatibility note:** this plugin currently requires an agent built from
+[`Marwanello/SaveLocker`](https://github.com/Marwanello/SaveLocker) (a fork) — not
+[`SkorcherX/SaveLocker`](https://github.com/SkorcherX/SaveLocker), the main/upstream repo. Every
+agent-side API addition this plugin depends on (install-directory exposure, the conflict/matching
+routes, the Playnite-plugin self-update and install routes) lives only on the fork's branches for
+now and has not been merged upstream. This is expected to change once those changes are merged, but
+until then, point the agent you install at a build of the fork, not the upstream repo.
+
 ## Why this exists
 
 The Windows tray already syncs every tracked game regardless of how it's launched (Steam, Epic,
@@ -24,18 +32,34 @@ launch after the fact, after the game may already have its save file open. Playn
   launch with a resolve dialog; anything else (agent offline, network hiccup) fails open.
 - **After exit**: asks the agent to push, the moment Playnite notices the game closed — faster and
   more certain than waiting for the tray's own polling watcher, which still runs as a safety net.
+- **Right-click menu**, theme-independent: **Sync now** (push-then-pull-or-block, with a dialog
+  stating the outcome), **Resolve conflict…** (opens the real resolve window, or says there's
+  nothing to resolve), and **Link to SaveLocker** (see below) for a game that isn't tracked yet.
+  A **"SaveLocker: Linked"** tag marks a game once it's tracked.
+- **Link to SaveLocker popup**, for a game the automatic matching chain couldn't place on its own:
+  search tracked games, automatic manifest lookup, manual manifest search, or browse to the save
+  folder by hand — plus a nudge notification the first time a launched game can't be auto-matched.
+- **Self-updating**: checks the agent's own update channel on startup and replaces its files when a
+  newer version is published, the same way the Windows tray keeps itself current — a restart notice
+  appears since a compiled Playnite extension can't hot-reload.
 - **Nothing else.** No game discovery, no save-path picking, no replacement for the agent's own UI —
-  those stay exactly as they are today for a game launched any other way.
-
-Full design: [`docs/tasks/playnite-plugin/plan.md`](https://github.com/SkorcherX/SaveLocker/blob/main/docs/tasks/playnite-plugin/plan.md)
-in the main SaveLocker repo (the agent-side half of this feature lives there; this repo is the
-plugin-side half, same split as [SaveLocker-Decky](https://github.com/SkorcherX/SaveLocker-Decky)).
+  those stay exactly as they are today for a game launched any other way. (The agent itself *can*
+  now discover Playnite's library directly and offer this plugin for install — see below — but that
+  lives in the main agent repo, not here.)
 
 ## Install
 
-Not yet on Playnite's official add-on database (see the plan doc's Phase 16) — until then, install
-the `.pext` from this repo's [releases](../../releases) by double-clicking it (Playnite is
-registered as the handler) or via **Add-ons → Install add-on from file**.
+Not yet on Playnite's official add-on database — a submission is prepared
+(`docs/addon-submission/`) but the pull request hasn't been opened yet; see
+[`docs/CONTEXT.md`](docs/CONTEXT.md) for exactly what's still blocking it. Until it's listed, install
+either:
+
+- **The `.pext` from this repo's [releases](../../releases)** by double-clicking it (Playnite is
+  registered as the handler) or via **Add-ons → Install add-on from file**; or
+- **From the agent itself** (SaveLocker agent-ui, Overview page → Playnite plugin card): a one-click
+  **Install automatically** button, or the same `.pext` download link.
+
+Either way, the agent keeps it updated by itself afterward.
 
 ## Status
 
