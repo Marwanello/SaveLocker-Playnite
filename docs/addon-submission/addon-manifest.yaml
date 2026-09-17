@@ -5,9 +5,10 @@
 # request — but no fork exists yet and no PR has been opened. Held here for review first.
 #
 # Note as of 2026-09-17: the real installer.yaml this file's InstallerManifestUrl points at now
-# exists at the repo root, referencing the genuine v0.1.0 release (tag pushed 2026-09-16, workflow
-# ran successfully, checksum verified). What still remains before submission is described in
-# docs/CONTEXT.md, not repeated here.
+# exists at the repo root, referencing the genuine v0.1.1 release (superseding v0.1.0; workflow ran
+# successfully both times, checksum verified fresh for v0.1.1). The full manual click-through
+# (pre-launch gate, right-click menu, Link to SaveLocker popup) has now been run and confirmed
+# working — what remains before submission is described in docs/CONTEXT.md, not repeated here.
 #
 # Schema confirmed directly against JosefNemec/PlayniteAddonDatabase's own README (fetched
 # 2026-09-16), cross-checked against a real merged entry (AfonsoJeremias/GameManagement) for exact
