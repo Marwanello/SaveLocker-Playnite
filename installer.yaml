@@ -3,18 +3,21 @@
 # JosefNemec/PlayniteAddonDatabase's own README and a real merged entry
 # (AfonsoJeremias/GameManagement/installer.yaml).
 #
-# v0.1.0 is real: tag pushed 2026-09-16, .github/workflows/release.yml ran successfully
-# (https://github.com/Marwanello/SaveLocker-Playnite/actions/runs/35151589595), and the published
-# release's SaveLocker.zip was verified against SHA256SUMS.txt after downloading it fresh.
+# v0.1.1 is real: tag/release published 2026-09-17 by the repo's own release workflow (triggered off
+# PR #5), and its SaveLocker.zip was verified fresh against this release's own SHA256SUMS.txt.
 # RequiredApiVersion (6.17.0) is Playnite.SDK.dll's own FileVersion, read directly out of Playnite's
 # real 10.60 release — a different number space from Playnite's own app version, confirmed by
-# inspecting the actual DLL rather than assumed.
+# inspecting the actual DLL rather than assumed. Per the add-on database's own convention (checked
+# against a real merged entry, AfonsoJeremias/GameManagement's installer.yaml): one current-version
+# entry, not an accumulated history — v0.1.0 (tag pushed 2026-09-16, also verified at the time) is
+# superseded by this entry, not listed alongside it.
 
 AddonId: '4d7017e5-87c0-4011-92c4-83f5dde2ada2'
 Packages:
-  - Version: 0.1.0
+  - Version: 0.1.1
     RequiredApiVersion: 6.17.0
-    ReleaseDate: 2026-09-16
-    PackageUrl: https://github.com/Marwanello/SaveLocker-Playnite/releases/download/v0.1.0/SaveLocker.pext
+    ReleaseDate: 2026-09-17
+    PackageUrl: https://github.com/Marwanello/SaveLocker-Playnite/releases/download/v0.1.1/SaveLocker.pext
     Changelog:
-      - First release: pre-launch conflict gate, automatic name/Steam-AppID matching, "Link to SaveLocker" popup, self-updating plugin
+      - Pre-launch conflict gate, automatic name/Steam-AppID matching, "Link to SaveLocker" popup, self-updating plugin
+      - Settings page now shows the installed plugin version
