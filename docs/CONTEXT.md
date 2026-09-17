@@ -13,6 +13,20 @@ the user's own account, distinct from the project's canonical `SkorcherX` org th
 under: https://github.com/Marwanello/SaveLocker-Playnite). Sibling on disk:
 `D:\Projects\SaveLocker\SaveLocker-Playnite`, next to `SaveLocker` and `SaveLocker-Decky`.
 
+## Status — release-version stamping fix (2026-09-17, branch `fix-version`, PR #7 open, not merged)
+
+**Found the cause of "v0.1.1 installs as 0.1.0":** `extension.yaml`'s `Version:` field is hardcoded
+in the repo (still `0.1.0`), and `release.yml` packs the built manifest verbatim into
+`SaveLocker.zip`/`.pext` — the tag never influenced what Playnite displays. `installer.yaml`
+correctly advertises 0.1.1, so the add-on database/self-updater would forever see "0.1.1 available"
+against a plugin reporting 0.1.0. Fix: a new "Stamp version from tag" step in `release.yml` before
+Build rewrites `Version:` from `GITHUB_REF_NAME` (guards: throws on a non-`v*` ref and on a
+regex-no-op). Stamp logic was dry-run locally against a copy of the real file; the workflow itself
+has NOT been exercised end to end yet. **The already-published v0.1.1 release still contains the
+wrong 0.1.0 manifest** — after PR #7 merges, delete + re-push `v0.1.1` or cut `v0.1.2`. The repo's
+own `extension.yaml` stays `0.1.0` as the dev placeholder; the tag always wins in CI now. Full
+write-up: `docs/logs/2026-09-17_release-version-stamping.md`.
+
 ## Status — Group 6, Phase 16 prep done 2026-09-16/17 (branch `playnite-plugin-group-6`), PR NOT opened
 
 Asked directly: prepare the `JosefNemec/PlayniteAddonDatabase` submission, but verify first and don't

@@ -41,6 +41,23 @@ jobs:
           & 7z e playnite-portable.7z Playnite.SDK.dll "-o$sdkDir" -y
           if (-not (Test-Path "$sdkDir\Playnite.SDK.dll")) { throw "Playnite.SDK.dll was not extracted." }
 
+      # Stamp extension.yaml's Version from the tag itself — the manifest version is what Playnite
+      # actually displays (extension.yaml is packed verbatim into the zip), and a hardcoded file
+      # version that drifts from the tag makes every release install as the old version (v0.1.1
+      # shipped as "0.1.0" this way). Editing the repo-root copy before Build means the stamped value
+      # flows into the build output the csproj copies it to, and nothing in the checkout is committed.
+      - name: Stamp version from tag
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^v') { throw "Ref '$env:GITHUB_REF_NAME' is not a v* tag." }
+          $ver = $env:GITHUB_REF_NAME.TrimStart('v')
+          $path = "extension.yaml"
+          $content = Get-Content $path -Raw
+          $stamped = $content -replace '(?m)^Version: [^\r\n]*', "Version: $ver"
+          if ($stamped -eq $content) { throw "No Version line was rewritten in $path — stamping would silently no-op." }
+          Set-Content $path $stamped -NoNewline
+          Write-Host "Stamped $path -> Version: $ver"
+
       - name: Build
         run: dotnet build src\SaveLocker.Playnite.csproj -c Release
 
