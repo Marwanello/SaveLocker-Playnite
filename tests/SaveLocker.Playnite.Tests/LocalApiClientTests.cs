@@ -114,6 +114,51 @@ namespace SaveLocker.Playnite.Tests
         }
 
         [Fact]
+        public async Task PreLaunchSyncAsync_ParsesAnAskWithItsQuestion()
+        {
+            var client = MakeClient();
+            var json = "{\"decision\":\"Ask\",\"reason\":\"Xenia set to start as Driver.\",\"question\":{\"id\":\"q1\",\"kind\":\"xenia-profile\"," +
+                "\"title\":\"Xenia would start as Player1\",\"text\":\"Saves are under Driver.\",\"choices\":[{\"id\":\"profile\",\"label\":\"Start as Driver\",\"primary\":true}," +
+                "{\"id\":\"keep\",\"label\":\"Start as Player1\",\"primary\":false}],\"defaultChoice\":\"profile\",\"timeoutSeconds\":30,\"canRemember\":true}}";
+
+            var serverTask = RespondOnceAsync(200, json);
+            var result = await client.PreLaunchSyncAsync(Guid.NewGuid(), default);
+            await serverTask;
+
+            Assert.Equal(LaunchDecision.Ask, result.Decision);
+            Assert.Equal("q1", result.Question.Id);
+            Assert.Equal("profile", result.Question.DefaultChoice);
+            Assert.Equal(2, result.Question.Choices.Count);
+            Assert.Equal("Start as Player1", result.Question.Choices[1].Label);
+            Assert.True(result.Question.CanRemember);
+        }
+
+        [Fact]
+        public async Task An_unknown_decision_still_reads_as_Proceed()
+        {
+            var client = MakeClient();
+            var serverTask = RespondOnceAsync(200, "{\"decision\":\"SomethingNewer\"}");
+            var result = await client.PreLaunchSyncAsync(Guid.NewGuid(), default);
+            await serverTask;
+
+            Assert.Equal(LaunchDecision.Proceed, result.Decision);
+            Assert.Null(result.Question);
+        }
+
+        [Fact]
+        public async Task LaunchAnswerAsync_PostsTheChoice()
+        {
+            var client = MakeClient();
+            var gameId = Guid.NewGuid();
+            var serverTask = RespondOnceAsync(200, "{\"decision\":\"Proceed\"}");
+            await client.LaunchAnswerAsync(gameId, "q1", "keep", true);
+            var request = await serverTask;
+
+            Assert.Equal("POST", request.HttpMethod);
+            Assert.Equal($"/api/games/{gameId}/launch-answer", request.Url.AbsolutePath);
+        }
+
+        [Fact]
         public async Task ResolveConflictAsync_Http409IsNotTolerated_Throws()
         {
             // Unlike pre-launch-sync/post-exit-sync, a 409 from /resolve is a genuine error

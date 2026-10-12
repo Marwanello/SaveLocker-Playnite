@@ -45,6 +45,50 @@ namespace SaveLocker.Playnite
         Proceed,
         ProceedSyncPaused,
         Blocked,
+        /// <summary>SaveLocker tasks/emulator-saves Phase 5c: launching is fine with <see cref="LaunchGateResult.Question"/>'s
+        /// default already applied by the agent; the plugin may offer the other choices first.</summary>
+        Ask,
+    }
+
+    /// <summary>LaunchChoice, SaveLocker/src/Agent.Core/LaunchQuestions.cs.</summary>
+    internal sealed class LaunchChoiceDto
+    {
+        public string Id;
+        public string Label;
+        public bool Primary;
+    }
+
+    /// <summary>LaunchQuestion, SaveLocker/src/Agent.Core/LaunchQuestions.cs — its DefaultChoice is already in effect.</summary>
+    internal sealed class LaunchQuestionDto
+    {
+        public string Id;
+        public string Kind;
+        public string Title;
+        public string Text;
+        public List<LaunchChoiceDto> Choices = new List<LaunchChoiceDto>();
+        public string DefaultChoice;
+        public int TimeoutSeconds;
+        public bool CanRemember;
+
+        public static LaunchQuestionDto FromJson(IDictionary<string, object> o)
+        {
+            if (o == null) return null;
+            var q = new LaunchQuestionDto
+            {
+                Id = Json.GetString(o, "id"),
+                Kind = Json.GetString(o, "kind"),
+                Title = Json.GetString(o, "title"),
+                Text = Json.GetString(o, "text"),
+                DefaultChoice = Json.GetString(o, "defaultChoice"),
+                TimeoutSeconds = Json.GetInt(o, "timeoutSeconds"),
+                CanRemember = Json.GetBool(o, "canRemember"),
+            };
+            object choices;
+            if (o.TryGetValue("choices", out choices) && choices != null)
+                foreach (var c in Json.AsObjectArray(choices))
+                    q.Choices.Add(new LaunchChoiceDto { Id = Json.GetString(c, "id"), Label = Json.GetString(c, "label"), Primary = Json.GetBool(c, "primary") });
+            return string.IsNullOrEmpty(q.Id) || q.Choices.Count == 0 ? null : q;
+        }
     }
 
     internal sealed class LaunchGateResult
@@ -53,6 +97,7 @@ namespace SaveLocker.Playnite
         public string Reason;
         public Guid? ConflictId;
         public string HolderMachineName;
+        public LaunchQuestionDto Question;
 
         public static LaunchGateResult FromJson(IDictionary<string, object> o)
         {
@@ -62,6 +107,7 @@ namespace SaveLocker.Playnite
             {
                 case "ProceedSyncPaused": decision = LaunchDecision.ProceedSyncPaused; break;
                 case "Blocked": decision = LaunchDecision.Blocked; break;
+                case "Ask": decision = LaunchDecision.Ask; break;
                 default: decision = LaunchDecision.Proceed; break;
             }
 
@@ -71,6 +117,7 @@ namespace SaveLocker.Playnite
                 Reason = Json.GetString(o, "reason"),
                 ConflictId = Json.GetNullableGuid(o, "conflictId"),
                 HolderMachineName = Json.GetString(o, "holderMachineName"),
+                Question = o.TryGetValue("question", out var question) && question != null ? LaunchQuestionDto.FromJson(Json.AsObject(question)) : null,
             };
         }
 

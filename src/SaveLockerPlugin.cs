@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Controls;
 using Playnite.SDK;
@@ -171,6 +172,43 @@ namespace SaveLocker.Playnite
                 await LinkAction.RunAsync(PlayniteApi, client, game).ConfigureAwait(true);
         }
 
+        // SaveLocker tasks/emulator-saves Phase 5c: a real dialog, like every other choice this plugin offers. The agent
+        // already applied the question's default, so closing it or failing to send the answer still launches correctly;
+        // "don't ask again" is one more button for the default choice rather than a checkbox MessageBox can't hold.
+        private void AskLaunchQuestion(TrackedGameDto tracked, LaunchQuestionDto question)
+        {
+            var buttons = new List<MessageBoxOption>();
+            var byButton = new Dictionary<MessageBoxOption, KeyValuePair<string, bool>>();
+            foreach (var c in question.Choices)
+            {
+                var b = new MessageBoxOption(c.Label, c.Id == question.DefaultChoice, false);
+                buttons.Add(b);
+                byButton[b] = new KeyValuePair<string, bool>(c.Id, false);
+            }
+            var preferred = question.Choices.FirstOrDefault(c => c.Id == question.DefaultChoice);
+            if (question.CanRemember && preferred != null)
+            {
+                var always = new MessageBoxOption(preferred.Label + " — don't ask again", false, false);
+                buttons.Add(always);
+                byButton[always] = new KeyValuePair<string, bool>(preferred.Id, true);
+            }
+
+            var picked = PlayniteApi.Dialogs.ShowMessage(question.Text, "SaveLocker — " + question.Title,
+                System.Windows.MessageBoxImage.Question, buttons);
+            if (picked == null || !byButton.TryGetValue(picked, out var answer)) return;
+            if (answer.Key == question.DefaultChoice && !answer.Value) return;
+            try
+            {
+                Task.Run(() => client.LaunchAnswerAsync(tracked.Id, question.Id, answer.Key, answer.Value)).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn(ex, "SaveLocker: launch answer not delivered, launching with the default");
+                PlayniteApi.Notifications.Add(new NotificationMessage("savelocker-answer-" + tracked.Id,
+                    $"SaveLocker: your choice for {tracked.Name} didn't reach the agent, so it started with the default.", NotificationType.Info));
+            }
+        }
+
         private void ShowAgentUnreachableDialog()
         {
             PlayniteApi.Dialogs.ShowMessage(
@@ -242,6 +280,10 @@ namespace SaveLocker.Playnite
                             "savelocker-lease-" + tracked.Id,
                             $"SaveLocker: launched without checking for updates — saves are checked out by '{gate.HolderMachineName}'. A conflict may occur if that machine is also playing.",
                             NotificationType.Info));
+                        return;
+
+                    case LaunchDecision.Ask:
+                        if (gate.Question != null) AskLaunchQuestion(tracked, gate.Question);
                         return;
 
                     case LaunchDecision.Blocked:
