@@ -115,6 +115,15 @@ namespace SaveLocker.Playnite
             return await SendAsync(HttpMethod.Post, $"/api/games/{gameId}/pre-launch-sync", new { }, o => LaunchGateResult.FromJson(Json.AsObject(o)), ct, tolerateConflict: true).ConfigureAwait(false);
         }
 
+        // The other half of LaunchDecision.Ask: only called for a choice other than the default the agent already applied
+        // (or to stop asking). 404 means the question expired or was already answered — the launch goes on regardless.
+        public async Task LaunchAnswerAsync(Guid gameId, string questionId, string choice, bool remember, CancellationToken ct = default(CancellationToken))
+        {
+            await SendAsync<object>(HttpMethod.Post, $"/api/games/{gameId}/launch-answer",
+                new { questionId, choice, remember },
+                o => null, ct).ConfigureAwait(false);
+        }
+
         public async Task PostExitSyncAsync(Guid gameId, CancellationToken ct = default(CancellationToken))
         {
             // The one route whose own work (the actual save upload) can legitimately take a while;
