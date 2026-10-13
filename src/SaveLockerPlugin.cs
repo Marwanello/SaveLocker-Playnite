@@ -174,7 +174,9 @@ namespace SaveLocker.Playnite
 
         // SaveLocker tasks/emulator-saves Phase 5c: a real dialog, like every other choice this plugin offers. The agent
         // already applied the question's default, so closing it or failing to send the answer still launches correctly;
-        // "don't ask again" is one more button for the default choice rather than a checkbox MessageBox can't hold.
+        // "don't ask again" is one more button per choice rather than a checkbox MessageBox can't hold — the agent remembers
+        // either answer for the game, as Decky's toggle does. No countdown: a PC player is at the dialog, and an answer
+        // after the agent forgot the question (15 minutes) is said not to have arrived.
         private void AskLaunchQuestion(TrackedGameDto tracked, LaunchQuestionDto question)
         {
             var buttons = new List<MessageBoxOption>();
@@ -185,12 +187,14 @@ namespace SaveLocker.Playnite
                 buttons.Add(b);
                 byButton[b] = new KeyValuePair<string, bool>(c.Id, false);
             }
-            var preferred = question.Choices.FirstOrDefault(c => c.Id == question.DefaultChoice);
-            if (question.CanRemember && preferred != null)
+            if (question.CanRemember)
             {
-                var always = new MessageBoxOption(preferred.Label + " — don't ask again", false, false);
-                buttons.Add(always);
-                byButton[always] = new KeyValuePair<string, bool>(preferred.Id, true);
+                foreach (var c in question.Choices)
+                {
+                    var always = new MessageBoxOption(c.Label + " — don't ask again", false, false);
+                    buttons.Add(always);
+                    byButton[always] = new KeyValuePair<string, bool>(c.Id, true);
+                }
             }
 
             var picked = PlayniteApi.Dialogs.ShowMessage(question.Text, "SaveLocker — " + question.Title,
@@ -276,9 +280,13 @@ namespace SaveLocker.Playnite
                         return;
 
                     case LaunchDecision.ProceedSyncPaused:
+                        // Without a holder it is not a lease: the agent says why it did not pull (SaveLocker
+                        // tasks/emulator-saves Phase 5c — a newer save that needs DLC this PC lacks).
                         PlayniteApi.Notifications.Add(new NotificationMessage(
                             "savelocker-lease-" + tracked.Id,
-                            $"SaveLocker: launched without checking for updates — saves are checked out by '{gate.HolderMachineName}'. A conflict may occur if that machine is also playing.",
+                            string.IsNullOrEmpty(gate.HolderMachineName) && !string.IsNullOrEmpty(gate.Reason)
+                                ? $"SaveLocker: {tracked.Name} started with this PC's save — {gate.Reason}"
+                                : $"SaveLocker: launched without checking for updates — saves are checked out by '{gate.HolderMachineName}'. A conflict may occur if that machine is also playing.",
                             NotificationType.Info));
                         return;
 

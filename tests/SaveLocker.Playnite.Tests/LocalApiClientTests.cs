@@ -69,6 +69,22 @@ namespace SaveLocker.Playnite.Tests
             return request;
         }
 
+        // RespondOnceAsync, with the request body read before the response closes it.
+        private async Task<Tuple<HttpListenerRequest, string>> RespondOnceWithBodyAsync(int statusCode, string json)
+        {
+            var context = await listener.GetContextAsync().ConfigureAwait(false);
+            string body;
+            using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                body = await reader.ReadToEndAsync().ConfigureAwait(false);
+            context.Response.StatusCode = statusCode;
+            context.Response.ContentType = "application/json";
+            var bytes = Encoding.UTF8.GetBytes(json);
+            context.Response.ContentLength64 = bytes.Length;
+            context.Response.OutputStream.Write(bytes, 0, bytes.Length);
+            context.Response.OutputStream.Close();
+            return Tuple.Create(context.Request, body);
+        }
+
         [Fact]
         public async Task GetGamesAsync_ParsesJsonArray()
         {
@@ -150,12 +166,17 @@ namespace SaveLocker.Playnite.Tests
         {
             var client = MakeClient();
             var gameId = Guid.NewGuid();
-            var serverTask = RespondOnceAsync(200, "{\"decision\":\"Proceed\"}");
+            var serverTask = RespondOnceWithBodyAsync(200, "{\"decision\":\"Proceed\"}");
             await client.LaunchAnswerAsync(gameId, "q1", "keep", true);
             var request = await serverTask;
 
-            Assert.Equal("POST", request.HttpMethod);
-            Assert.Equal($"/api/games/{gameId}/launch-answer", request.Url.AbsolutePath);
+            Assert.Equal("POST", request.Item1.HttpMethod);
+            Assert.Equal($"/api/games/{gameId}/launch-answer", request.Item1.Url.AbsolutePath);
+            // The agent's LaunchAnswerRequest(QuestionId, Choice, Remember), bound case-insensitively.
+            var body = Json.AsObject(Json.Parse(request.Item2));
+            Assert.Equal("q1", Json.GetString(body, "questionId"));
+            Assert.Equal("keep", Json.GetString(body, "choice"));
+            Assert.True(Json.GetBool(body, "remember"));
         }
 
         [Fact]
