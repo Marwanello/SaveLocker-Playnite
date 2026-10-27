@@ -133,7 +133,7 @@ namespace SaveLocker.Playnite
         // and the intro sentence made it visible enough for the user to report it as unreadable
         // (screenshot 2026-09-15). The button-label fix below predates this and independently reached
         // the same conclusion for Button/ContentPresenter's own broken inheritance path.
-        private static TextBlock Themed(TextBlock block)
+        internal static TextBlock Themed(TextBlock block)
         {
             block.SetResourceReference(TextBlock.ForegroundProperty, "TextBrush");
             return block;
@@ -151,7 +151,7 @@ namespace SaveLocker.Playnite
         // PopupBorderBrush (confirmed working — the card panels below use the same pair and render
         // correctly), so this is still theme-driven, not a hardcoded color; only the Foreground path
         // changed, from "trust inheritance" to "set it directly on the element that renders it."
-        private static readonly ControlTemplate ButtonTemplate = (ControlTemplate)XamlReader.Parse(@"
+        internal static readonly ControlTemplate ButtonTemplate = (ControlTemplate)XamlReader.Parse(@"
 <ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
                   xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
                   TargetType='Button'>
@@ -174,7 +174,7 @@ namespace SaveLocker.Playnite
   </ControlTemplate.Triggers>
 </ControlTemplate>");
 
-        private static void StyleButton(Button button)
+        internal static void StyleButton(Button button)
         {
             button.Template = ButtonTemplate;
             button.SetResourceReference(Control.BackgroundProperty, "PopupBackgroundBrush");
@@ -182,7 +182,7 @@ namespace SaveLocker.Playnite
             button.BorderThickness = new Thickness(1);
         }
 
-        private static TextBlock MakeLabel(string text) => Themed(new TextBlock { Text = text });
+        internal static TextBlock MakeLabel(string text) => Themed(new TextBlock { Text = text });
 
         // Lucide renders with stroke, not fill (currentColor stroke, 2px, round caps/joins) — this
         // mirrors that exactly rather than filling the shape, which is what the raw path data assumes.

@@ -25,6 +25,11 @@ SaveLocker-Playnite/
 │   │                               #   only when nothing resolves. (A GetGameViewControl status-chip
 │   │                               #   control, GameStatusControl, called into this too but was removed
 │   │                               #   — see SaveLockerPlugin.cs's comment above GetGameMenuItems.)
+│   ├── PlaythroughCache.cs         # What the right-click menu knows about playthroughs: tracked games + the list of every game
+│   │                               #   with more than one, refreshed behind the menu (GetGameMenuItems must not wait on the network)
+│   ├── PlaythroughActions.cs       # SaveLocker ▸ Playthrough ▸: switch (confirm → Playnite progress dialog following the agent's
+│   │                               #   activity feed → result dialog), the fallback picker, New playthrough. Rules live in the agent
+│   ├── NewPlaythroughWindow.cs     # The New playthrough form: name, Current save / Start fresh (+ files to keep), Play it now
 │   ├── LinkedTag.cs                # Marks a linked game with a "SaveLocker: Linked" Tag — the one
 │   │                               #   theme-independent per-game visual hook the SDK actually has.
 │   ├── SyncNowAction.cs            # "Sync now": runs the same pre-launch-sync gate OnGameStarting
