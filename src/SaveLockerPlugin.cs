@@ -109,8 +109,9 @@ namespace SaveLocker.Playnite
 
         // SaveLocker ▸ Playthrough ▸ (tasks/save-playthroughs Phase 9): the game's playthroughs with the one this PC plays marked,
         // and New playthrough…. Built from PlaythroughCache because this method must not wait on the network; a refresh runs
-        // behind it, so a playthrough made elsewhere shows by the next right-click. A game with several but no list yet gets one
-        // item that fetches the list and asks. One game only: a switch is per game, so a multi-selection gets nothing here.
+        // behind it, so a playthrough made elsewhere shows on a later right-click once the agent has counted it. A game with several
+        // but no list yet gets one item that fetches the list and asks. One game only: a switch is per game, so a multi-selection
+        // gets nothing here.
         private IEnumerable<GameMenuItem> PlaythroughMenuItems(GetGameMenuItemsArgs args)
         {
             const string section = "SaveLocker|Playthrough";
@@ -123,15 +124,15 @@ namespace SaveLocker.Playnite
             var list = playthroughs.ListFor(tracked.Id);
             if (list != null && !list.Offline && list.Choices().Count > 0)
             {
+                var current = list.Selected();
                 foreach (var p in list.Choices())
                 {
                     var to = p;
-                    var current = list.Choices().FirstOrDefault(x => x.Id == list.SelectedId);
                     yield return new GameMenuItem
                     {
-                        Description = (to.Id == list.SelectedId ? "✓ " : "      ") + to.Name,
+                        Description = (to == current ? "✓ " : "      ") + to.Name,
                         MenuSection = section,
-                        Action = async a => await PlaythroughActions.SwitchAsync(PlayniteApi, client, playthroughs, WithSelection(tracked, list), current?.Name ?? list.SelectedName, to).ConfigureAwait(true),
+                        Action = async a => await PlaythroughActions.SwitchAsync(PlayniteApi, client, playthroughs, tracked, current, to).ConfigureAwait(true),
                     };
                 }
             }
@@ -154,16 +155,6 @@ namespace SaveLocker.Playnite
                 Description = "New playthrough…",
                 MenuSection = section,
                 Action = async a => await PlaythroughActions.NewAsync(PlayniteApi, client, playthroughs, tracked).ConfigureAwait(true),
-            };
-        }
-
-        // The tracked-games memory can be a little behind the playthrough list it was fetched with; the list is the fresher answer.
-        private static TrackedGameDto WithSelection(TrackedGameDto tracked, GamePlaythroughsDto list)
-        {
-            return new TrackedGameDto
-            {
-                Id = tracked.Id, Name = tracked.Name, PlaythroughId = list.SelectedId, PlaythroughName = list.SelectedName,
-                PlaythroughCount = tracked.PlaythroughCount,
             };
         }
 

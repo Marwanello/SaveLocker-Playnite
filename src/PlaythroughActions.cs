@@ -19,10 +19,11 @@ namespace SaveLocker.Playnite
         private static readonly ILogger Logger = LogManager.GetLogger();
         private const string Title = "SaveLocker — playthrough";
 
+        /// <param name="from">The playthrough this PC plays, from the same list as <paramref name="to"/>; null when that list did not name it.</param>
         public static async Task SwitchAsync(
-            IPlayniteAPI api, LocalApiClient client, PlaythroughCache cache, TrackedGameDto tracked, string fromName, PlaythroughDto to)
+            IPlayniteAPI api, LocalApiClient client, PlaythroughCache cache, TrackedGameDto tracked, PlaythroughDto from, PlaythroughDto to)
         {
-            if (tracked.PlaythroughId == to.Id || (tracked.PlaythroughId == null && to.IsDefault))
+            if (from != null ? from.Id == to.Id : tracked.PlaythroughId == to.Id || (tracked.PlaythroughId == null && to.IsDefault))
             {
                 api.Dialogs.ShowMessage("This PC already plays \"" + to.Name + "\" for \"" + tracked.Name + "\".", Title, MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
@@ -37,7 +38,7 @@ namespace SaveLocker.Playnite
             var cancel = new MessageBoxOption("Cancel", false, true);
             var choice = api.Dialogs.ShowMessage(
                 "Play \"" + to.Name + "\" on this PC?\n\n" +
-                (string.IsNullOrEmpty(fromName) ? "" : "\"" + fromName + "\" is uploaded to its own playthrough first, so nothing is lost. ") +
+                (from == null ? "" : "\"" + from.Name + "\" is uploaded to its own playthrough first, so nothing is lost. ") +
                 "Your other devices keep their playthroughs.",
                 Title + " — " + tracked.Name, MessageBoxImage.Question, new List<MessageBoxOption> { go, cancel });
             if (choice != go) return;
@@ -45,7 +46,7 @@ namespace SaveLocker.Playnite
             var result = RunWithProgress(api, client, "Switching \"" + tracked.Name + "\" to \"" + to.Name + "\"…", () => client.SwitchPlaythroughAsync(tracked.Id, to.Id));
             cache.Forget(tracked.Id);
             Report(api, result, tracked.Name, "Now playing \"" + to.Name + "\"", "Couldn't switch");
-            await cache.RefreshAsync().ConfigureAwait(true);
+            await cache.RefreshAsync(afterChange: true).ConfigureAwait(true);
         }
 
         /// <summary>The menu's fallback while its memory has no list yet: fetch it now, let the player pick, then switch as above.</summary>
@@ -64,12 +65,17 @@ namespace SaveLocker.Playnite
                 return;
             }
 
-            var options = list.Choices().Select(p => new GenericItemOption(
-                (p.Id == list.SelectedId ? "✓ " : "") + p.Name, p.HeadAt.HasValue ? "Latest " + Ago(p.HeadAt.Value) + " on " + p.HeadMachine : "No save yet") { Name = p.Id.ToString() }).ToList();
+            // GenericItemOption has only a name and a description to show, so the playthrough each option stands for is kept beside it.
+            var current = list.Selected();
+            var byOption = list.Choices().ToDictionary(
+                p => new GenericItemOption(
+                    (p == current ? "✓ " : "") + p.Name,
+                    p.HeadAt.HasValue ? "Latest " + Ago(p.HeadAt.Value) + " on " + p.HeadMachine : "No save yet"),
+                p => p);
+            var options = byOption.Keys.ToList();
             var picked = api.Dialogs.ChooseItemWithSearch(options, q => options.Where(o => string.IsNullOrEmpty(q) || o.Name.IndexOf(q, StringComparison.OrdinalIgnoreCase) >= 0).ToList(), "", "SaveLocker — playthrough for " + tracked.Name);
-            if (picked == null) return;
-            var to = list.Choices().FirstOrDefault(p => p.Id.ToString() == picked.Name);
-            if (to != null) await SwitchAsync(api, client, cache, tracked, list.SelectedName, to).ConfigureAwait(true);
+            if (picked == null || !byOption.TryGetValue(picked, out var to)) return;
+            await SwitchAsync(api, client, cache, tracked, current, to).ConfigureAwait(true);
         }
 
         public static async Task NewAsync(IPlayniteAPI api, LocalApiClient client, PlaythroughCache cache, TrackedGameDto tracked)
@@ -93,7 +99,7 @@ namespace SaveLocker.Playnite
                 () => client.NewPlaythroughAsync(tracked.Id, choice.Name, choice.StartFresh, choice.KeepFiles, choice.PlayHere));
             cache.Forget(tracked.Id);
             Report(api, result, tracked.Name, "Created \"" + choice.Name + "\"", "Couldn't create the playthrough");
-            await cache.RefreshAsync().ConfigureAwait(true);
+            await cache.RefreshAsync(afterChange: true).ConfigureAwait(true);
         }
 
         /// <summary>
@@ -138,11 +144,12 @@ namespace SaveLocker.Playnite
                 MessageBoxButton.OK, r.Ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
 
-        /// <summary>Why a call failed, in words. An agent that predates playthroughs has no such route, which is a 404.</summary>
+        /// <summary>Why a call failed, in words.</summary>
         internal static string Explain(Exception ex)
         {
             var text = ex.Message ?? "";
-            if (text.StartsWith("404")) return "This SaveLocker agent is too old to switch playthroughs. Update it first.";
+            // A 404 is also the answer for a game the agent no longer tracks, so the message names both.
+            if (text.StartsWith("404")) return "The SaveLocker agent doesn't know this game, or is older than v0.9.0 and has no playthroughs. Update it, then try again.";
             if (ex is OperationCanceledException) return "The agent did not answer in time. Check its activity before trying again.";
             if (ex is System.Net.Http.HttpRequestException && text.Length > 0 && !char.IsDigit(text[0])) return "The SaveLocker agent isn't running.";
             return "The agent answered with an error: " + text;

@@ -128,6 +128,18 @@ namespace SaveLocker.Playnite.Tests
         }
 
         [Fact]
+        public void Selected_IsTheDefaultWhenNoneIsNamed()
+        {
+            var main = new PlaythroughDto { Id = Guid.NewGuid(), Name = "Main", IsDefault = true };
+            var hard = new PlaythroughDto { Id = Guid.NewGuid(), Name = "Hard mode" };
+            var list = new GamePlaythroughsDto { Playthroughs = new System.Collections.Generic.List<PlaythroughDto> { hard, main } };
+
+            Assert.Same(main, list.Selected());
+            list.SelectedId = hard.Id;
+            Assert.Same(hard, list.Selected());
+        }
+
+        [Fact]
         public async Task SwitchPlaythroughAsync_PostsToTheSwitchRouteAndReadsTheResult()
         {
             var client = MakeClient();

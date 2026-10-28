@@ -26,6 +26,7 @@ namespace SaveLocker.Playnite
         private readonly Dictionary<Guid, GamePlaythroughsDto> lists = new Dictionary<Guid, GamePlaythroughsDto>();
         private DateTime refreshedAt = DateTime.MinValue;
         private int refreshing;
+        private int again;
 
         public PlaythroughCache(LocalApiClient client)
         {
@@ -53,38 +54,48 @@ namespace SaveLocker.Playnite
         }
 
         /// <summary>Refreshes the tracked games and the playthrough list of every game with more than one. One refresh at a
-        /// time; a failure leaves what was known (an unreachable agent is the normal state of a PC with no SaveLocker running).</summary>
-        public Task RefreshAsync()
+        /// time; a failure leaves what was known (an unreachable agent is the normal state of a PC with no SaveLocker running).
+        /// <paramref name="afterChange"/> (a switch or a new playthrough) makes a refresh already running go round once more when
+        /// it ends, since what it read may be from before the change.</summary>
+        public Task RefreshAsync(bool afterChange = false)
         {
+            if (afterChange) Interlocked.Exchange(ref again, 1);
             if (Interlocked.CompareExchange(ref refreshing, 1, 0) != 0) return Task.FromResult(0);
             return Task.Run(async () =>
             {
-                try
+                do
                 {
-                    var games = await client.GetGamesAsync().ConfigureAwait(false);
-                    var fresh = new Dictionary<Guid, GamePlaythroughsDto>();
-                    foreach (var g in games.Where(x => x.PlaythroughCount > 1))
-                    {
-                        try { fresh[g.Id] = await client.GetPlaythroughsAsync(g.Id).ConfigureAwait(false); }
-                        catch (Exception ex) { Logger.Debug(ex, "SaveLocker: couldn't list playthroughs for " + g.Name); }
-                    }
-                    lock (gate)
-                    {
-                        tracked = games;
-                        lists.Clear();
-                        foreach (var kv in fresh) lists[kv.Key] = kv.Value;
-                        refreshedAt = DateTime.UtcNow;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Debug(ex, "SaveLocker: playthrough menu data not refreshed");
-                }
-                finally
-                {
+                    Interlocked.Exchange(ref again, 0);
+                    await RefreshOnceAsync().ConfigureAwait(false);
                     Interlocked.Exchange(ref refreshing, 0);
                 }
+                while (Volatile.Read(ref again) == 1 && Interlocked.CompareExchange(ref refreshing, 1, 0) == 0);
             });
+        }
+
+        private async Task RefreshOnceAsync()
+        {
+            try
+            {
+                var games = await client.GetGamesAsync().ConfigureAwait(false);
+                var fresh = new Dictionary<Guid, GamePlaythroughsDto>();
+                foreach (var g in games.Where(x => x.PlaythroughCount > 1))
+                {
+                    try { fresh[g.Id] = await client.GetPlaythroughsAsync(g.Id).ConfigureAwait(false); }
+                    catch (Exception ex) { Logger.Debug(ex, "SaveLocker: couldn't list playthroughs for " + g.Name); }
+                }
+                lock (gate)
+                {
+                    tracked = games;
+                    lists.Clear();
+                    foreach (var kv in fresh) lists[kv.Key] = kv.Value;
+                    refreshedAt = DateTime.UtcNow;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Debug(ex, "SaveLocker: playthrough menu data not refreshed");
+            }
         }
     }
 }

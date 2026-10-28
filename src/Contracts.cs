@@ -331,6 +331,14 @@ namespace SaveLocker.Playnite
             return Playthroughs.FindAll(p => !p.Archived);
         }
 
+        /// <summary>The playthrough this PC plays: a null <see cref="SelectedId"/> means the game's default.</summary>
+        public PlaythroughDto Selected()
+        {
+            return SelectedId.HasValue
+                ? Playthroughs.Find(p => p.Id == SelectedId.Value)
+                : Playthroughs.Find(p => p.IsDefault);
+        }
+
         public static GamePlaythroughsDto FromJson(IDictionary<string, object> o)
         {
             var dto = new GamePlaythroughsDto

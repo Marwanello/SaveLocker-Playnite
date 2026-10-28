@@ -44,7 +44,8 @@ namespace SaveLocker.Playnite
             var root = new StackPanel { Margin = new Thickness(16) };
 
             root.Children.Add(Small("Name", new Thickness(0, 0, 0, 4)));
-            nameBox = new TextBox { Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(0, 0, 0, 12) };
+            // SaveLocker/src/Shared/Contracts.cs's Playthroughs.MaxNameLength: the server refuses a longer name.
+            nameBox = new TextBox { MaxLength = 60, Padding = new Thickness(6, 4, 6, 4), Margin = new Thickness(0, 0, 0, 12) };
             nameBox.TextChanged += (s, e) => create.IsEnabled = nameBox.Text.Trim().Length > 0;
             root.Children.Add(nameBox);
 
@@ -76,10 +77,10 @@ namespace SaveLocker.Playnite
             root.Children.Add(playHere);
 
             var footer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
-            var cancel = new Button { Content = ConflictResolveWindow.MakeLabel("Cancel"), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0) };
+            var cancel = new Button { Content = ConflictResolveWindow.MakeLabel("Cancel"), Padding = new Thickness(12, 5, 12, 5), Margin = new Thickness(0, 0, 8, 0), IsCancel = true };
             cancel.Click += (s, e) => { window.DialogResult = false; window.Close(); };
             ConflictResolveWindow.StyleButton(cancel);
-            create = new Button { Content = ConflictResolveWindow.MakeLabel("Create"), Padding = new Thickness(12, 5, 12, 5), IsEnabled = false };
+            create = new Button { Content = ConflictResolveWindow.MakeLabel("Create"), Padding = new Thickness(12, 5, 12, 5), IsEnabled = false, IsDefault = true };
             create.Click += Create_Click;
             ConflictResolveWindow.StyleButton(create);
             footer.Children.Add(cancel);
