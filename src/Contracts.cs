@@ -20,6 +20,11 @@ namespace SaveLocker.Playnite
         public bool? HasSteamCloud;
         public bool? PushAfterExitEnabled;
         public string InstallDir;
+        /// <summary>The playthrough this PC follows for the game (null = the game's default), and how many the agent last saw.
+        /// Absent on an agent that predates playthroughs, which reads as one.</summary>
+        public Guid? PlaythroughId;
+        public string PlaythroughName;
+        public int PlaythroughCount = 1;
 
         public static TrackedGameDto FromJson(IDictionary<string, object> o)
         {
@@ -35,6 +40,9 @@ namespace SaveLocker.Playnite
                 HasSteamCloud = Json.GetNullableBool(o, "hasSteamCloud"),
                 PushAfterExitEnabled = Json.GetNullableBool(o, "pushAfterExitEnabled"),
                 InstallDir = Json.GetString(o, "installDir"),
+                PlaythroughId = Json.GetNullableGuid(o, "playthroughId"),
+                PlaythroughName = Json.GetString(o, "playthroughName"),
+                PlaythroughCount = Math.Max(1, Json.GetInt(o, "playthroughCount", 1)),
             };
         }
     }
@@ -277,6 +285,106 @@ namespace SaveLocker.Playnite
                 State = Json.GetString(o, "state"),
                 Message = Json.GetString(o, "message"),
             };
+        }
+    }
+
+    /// <summary>SaveLocker/src/Shared/Contracts.cs's <c>PlaythroughDto</c>, the part this plugin reads.</summary>
+    internal sealed class PlaythroughDto
+    {
+        public Guid Id;
+        public string Name;
+        public bool IsDefault;
+        public bool Archived;
+        public DateTime? HeadAt;
+        public string HeadMachine;
+        public bool HasOpenConflict;
+
+        public static PlaythroughDto FromJson(IDictionary<string, object> o)
+        {
+            object head;
+            var headObj = o.TryGetValue("head", out head) && head != null ? Json.AsObject(head) : null;
+            return new PlaythroughDto
+            {
+                Id = Json.GetGuid(o, "id"),
+                Name = Json.GetString(o, "name"),
+                IsDefault = Json.GetBool(o, "isDefault"),
+                Archived = !string.IsNullOrEmpty(Json.GetString(o, "archivedAt")),
+                HeadAt = headObj == null ? (DateTime?)null : Json.GetNullableDateTime(headObj, "createdAt"),
+                HeadMachine = headObj == null ? null : Json.GetString(headObj, "machineName"),
+                HasOpenConflict = Json.GetBool(o, "hasOpenConflict"),
+            };
+        }
+    }
+
+    /// <summary>The agent's <c>GamePlaythroughsDto</c>: the server's list, which one this PC follows, and whether the server
+    /// answered. <see cref="Offline"/> means <see cref="Playthroughs"/> is empty because the server could not be reached.</summary>
+    internal sealed class GamePlaythroughsDto
+    {
+        public Guid? SelectedId;
+        public string SelectedName;
+        public bool Offline;
+        public List<PlaythroughDto> Playthroughs = new List<PlaythroughDto>();
+
+        /// <summary>What a device can be put on: archived playthroughs are un-archived in the console first.</summary>
+        public List<PlaythroughDto> Choices()
+        {
+            return Playthroughs.FindAll(p => !p.Archived);
+        }
+
+        /// <summary>The playthrough this PC plays: a null <see cref="SelectedId"/> means the game's default.</summary>
+        public PlaythroughDto Selected()
+        {
+            return SelectedId.HasValue
+                ? Playthroughs.Find(p => p.Id == SelectedId.Value)
+                : Playthroughs.Find(p => p.IsDefault);
+        }
+
+        public static GamePlaythroughsDto FromJson(IDictionary<string, object> o)
+        {
+            var dto = new GamePlaythroughsDto
+            {
+                SelectedId = Json.GetNullableGuid(o, "selectedId"),
+                SelectedName = Json.GetString(o, "selectedName"),
+                Offline = Json.GetBool(o, "offline"),
+            };
+            object list;
+            if (o.TryGetValue("playthroughs", out list) && list != null)
+                foreach (var p in Json.AsObjectArray(list)) dto.Playthroughs.Add(PlaythroughDto.FromJson(p));
+            return dto;
+        }
+    }
+
+    /// <summary>The agent's <c>SwitchPlaythroughResponse</c>. A refusal ("the game is running") is Ok=false with the reason in
+    /// <see cref="Message"/>; a 409 from the per-game gate arrives as an <c>ErrorResponse</c> and reads the same way.</summary>
+    internal sealed class SwitchPlaythroughResult
+    {
+        public bool Ok;
+        public string Message;
+        public bool Offline;
+        public Guid? PlaythroughId;
+
+        public static SwitchPlaythroughResult FromJson(IDictionary<string, object> o)
+        {
+            return new SwitchPlaythroughResult
+            {
+                Ok = Json.GetBool(o, "ok"),
+                Message = Json.GetString(o, "message") ?? Json.GetString(o, "error") ?? "The agent gave no reason.",
+                Offline = Json.GetBool(o, "offline"),
+                PlaythroughId = Json.GetNullableGuid(o, "playthroughId"),
+            };
+        }
+    }
+
+    /// <summary>The agent's <c>StartFileDto</c>: a save file <i>Start fresh</i> can keep, ticked by default for a profile or settings file.</summary>
+    internal sealed class StartFileDto
+    {
+        public string Path;
+        public long Size;
+        public bool KeepByDefault;
+
+        public static StartFileDto FromJson(IDictionary<string, object> o)
+        {
+            return new StartFileDto { Path = Json.GetString(o, "path"), Size = Json.GetLong(o, "size"), KeepByDefault = Json.GetBool(o, "keepByDefault") };
         }
     }
 }

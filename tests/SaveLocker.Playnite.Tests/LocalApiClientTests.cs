@@ -105,6 +105,113 @@ namespace SaveLocker.Playnite.Tests
         }
 
         [Fact]
+        public async Task GetPlaythroughsAsync_ParsesTheListAndTheSelectedOne()
+        {
+            var client = MakeClient();
+            var main = "22222222-2222-2222-2222-222222222222";
+            var hard = "33333333-3333-3333-3333-333333333333";
+            var json = "{\"selectedId\":\"" + hard + "\",\"selectedName\":\"Hard mode\",\"offline\":false,\"selectPending\":false,\"playthroughs\":[" +
+                "{\"id\":\"" + main + "\",\"name\":\"Main\",\"isDefault\":true,\"archivedAt\":null,\"head\":{\"createdAt\":\"2026-10-20T10:00:00Z\",\"machineName\":\"Deck\"},\"hasOpenConflict\":false}," +
+                "{\"id\":\"" + hard + "\",\"name\":\"Hard mode\",\"isDefault\":false,\"archivedAt\":null,\"head\":null,\"hasOpenConflict\":false}," +
+                "{\"id\":\"44444444-4444-4444-4444-444444444444\",\"name\":\"Old\",\"isDefault\":false,\"archivedAt\":\"2026-10-01T00:00:00Z\",\"head\":null,\"hasOpenConflict\":false}],\"copies\":[]}";
+
+            var serverTask = RespondOnceAsync(200, json);
+            var list = await client.GetPlaythroughsAsync(Guid.NewGuid());
+            var request = await serverTask;
+
+            Assert.Contains("/playthroughs", request.Url.AbsolutePath);
+            Assert.Equal(Guid.Parse(hard), list.SelectedId);
+            Assert.Equal(3, list.Playthroughs.Count);
+            Assert.Equal(new[] { "Main", "Hard mode" }, list.Choices().ConvertAll(p => p.Name).ToArray());
+            Assert.Equal("Deck", list.Playthroughs[0].HeadMachine);
+            Assert.Null(list.Playthroughs[1].HeadAt);
+        }
+
+        [Fact]
+        public void Selected_IsTheDefaultWhenNoneIsNamed()
+        {
+            var main = new PlaythroughDto { Id = Guid.NewGuid(), Name = "Main", IsDefault = true };
+            var hard = new PlaythroughDto { Id = Guid.NewGuid(), Name = "Hard mode" };
+            var list = new GamePlaythroughsDto { Playthroughs = new System.Collections.Generic.List<PlaythroughDto> { hard, main } };
+
+            Assert.Same(main, list.Selected());
+            list.SelectedId = hard.Id;
+            Assert.Same(hard, list.Selected());
+        }
+
+        [Fact]
+        public async Task SwitchPlaythroughAsync_PostsToTheSwitchRouteAndReadsTheResult()
+        {
+            var client = MakeClient();
+            var gameId = Guid.NewGuid();
+            var target = Guid.NewGuid();
+            var serverTask = RespondOnceAsync(200, "{\"ok\":false,\"message\":\"Celeste is running.\",\"offline\":false,\"playthroughId\":null}");
+            var result = await client.SwitchPlaythroughAsync(gameId, target);
+            var request = await serverTask;
+
+            Assert.Equal("POST", request.HttpMethod);
+            Assert.EndsWith("/api/games/" + gameId + "/playthroughs/" + target + "/switch", request.Url.AbsolutePath);
+            Assert.False(result.Ok);
+            Assert.Equal("Celeste is running.", result.Message);
+        }
+
+        [Fact]
+        public async Task SwitchPlaythroughAsync_ReadsAGateConflictAsARefusalNotAnError()
+        {
+            var client = MakeClient();
+            var serverTask = RespondOnceAsync(409, "{\"error\":\"A sync of this game is already running. Watch the activity feed.\"}");
+            var result = await client.SwitchPlaythroughAsync(Guid.NewGuid(), Guid.NewGuid());
+            await serverTask;
+
+            Assert.False(result.Ok);
+            Assert.Contains("already running", result.Message);
+        }
+
+        [Fact]
+        public async Task NewPlaythroughAsync_SendsTheNameTheStartAndTheKeptFiles()
+        {
+            var client = MakeClient();
+            var serverTask = RespondOnceWithBodyAsync(200, "{\"ok\":true,\"message\":\"Created.\",\"offline\":false,\"playthroughId\":\"55555555-5555-5555-5555-555555555555\"}");
+            var result = await client.NewPlaythroughAsync(Guid.NewGuid(), "Dark Urge", true, new[] { "profile8.lsf" }, true);
+            var sent = await serverTask;
+
+            Assert.True(result.Ok);
+            Assert.Equal(Guid.Parse("55555555-5555-5555-5555-555555555555"), result.PlaythroughId);
+            Assert.Contains("\"name\":\"Dark Urge\"", sent.Item2);
+            Assert.Contains("\"startFresh\":true", sent.Item2);
+            Assert.Contains("\"keepFiles\":[\"profile8.lsf\"]", sent.Item2);
+            Assert.Contains("\"playHere\":true", sent.Item2);
+        }
+
+        [Fact]
+        public async Task GetActivitySinceAsync_ReturnsOnlyTheLinesFromTheSwitchOn()
+        {
+            var client = MakeClient();
+            var json = "{\"current\":{},\"recent\":[{\"timestampUtc\":\"2026-10-27T09:00:00Z\",\"message\":\"old\"},{\"timestampUtc\":\"2026-10-27T10:00:05Z\",\"message\":\"Uploading Main\"}]}";
+            var serverTask = RespondOnceAsync(200, json);
+            var lines = await client.GetActivitySinceAsync(new DateTime(2026, 10, 27, 10, 0, 0, DateTimeKind.Utc));
+            await serverTask;
+
+            Assert.Equal(new[] { "Uploading Main" }, lines.ToArray());
+        }
+
+        [Fact]
+        public async Task GetGamesAsync_ReadsThePlaythroughFieldsAndDefaultsOldAgentsToOne()
+        {
+            var client = MakeClient();
+            var json = "[{\"id\":\"11111111-1111-1111-1111-111111111111\",\"name\":\"A\",\"playthroughId\":\"22222222-2222-2222-2222-222222222222\",\"playthroughName\":\"Hard mode\",\"playthroughCount\":3}," +
+                       "{\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"B\"}]";
+            var serverTask = RespondOnceAsync(200, json);
+            var games = await client.GetGamesAsync();
+            await serverTask;
+
+            Assert.Equal(3, games[0].PlaythroughCount);
+            Assert.Equal("Hard mode", games[0].PlaythroughName);
+            Assert.Equal(1, games[1].PlaythroughCount);
+            Assert.Null(games[1].PlaythroughId);
+        }
+
+        [Fact]
         public async Task Requests_CarryTheLocalAuthTokenHeader()
         {
             var client = MakeClient();

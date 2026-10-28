@@ -196,6 +196,54 @@ namespace SaveLocker.Playnite
                 o => EnrollResult.FromJson(Json.AsObject(o)), ct).ConfigureAwait(false);
         }
 
+        // Playthroughs (SaveLocker tasks/save-playthroughs Phase 9). The agent owns the whole switch: it pushes the outgoing
+        // save to its own line, refuses while the game runs, and restores the other. These only ask and report.
+        public async Task<GamePlaythroughsDto> GetPlaythroughsAsync(Guid gameId, CancellationToken ct = default(CancellationToken))
+        {
+            // The agent asks the server on this call, so it is allowed longer than a purely local read.
+            return await SendAsync(HttpMethod.Get, $"/api/games/{gameId}/playthroughs", null, o => GamePlaythroughsDto.FromJson(Json.AsObject(o)), ct, timeout: TimeSpan.FromSeconds(30)).ConfigureAwait(false);
+        }
+
+        public async Task<SwitchPlaythroughResult> SwitchPlaythroughAsync(Guid gameId, Guid playthroughId, CancellationToken ct = default(CancellationToken))
+        {
+            // 409 = "a sync of this game is already running": an ErrorResponse, shown as the refusal it is.
+            return await SendAsync(HttpMethod.Post, $"/api/games/{gameId}/playthroughs/{playthroughId}/switch", new { },
+                o => SwitchPlaythroughResult.FromJson(Json.AsObject(o)), ct, tolerateConflict: true, timeout: TimeSpan.FromMinutes(10)).ConfigureAwait(false);
+        }
+
+        public async Task<SwitchPlaythroughResult> NewPlaythroughAsync(
+            Guid gameId, string name, bool startFresh, IList<string> keepFiles, bool playHere, CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Post, $"/api/games/{gameId}/playthroughs",
+                new { name, fromPlaythroughId = (string)null, startFresh, keepFiles = keepFiles ?? new List<string>(), playHere, fromVersionId = (string)null },
+                o => SwitchPlaythroughResult.FromJson(Json.AsObject(o)), ct, tolerateConflict: true, timeout: TimeSpan.FromMinutes(10)).ConfigureAwait(false);
+        }
+
+        public async Task<List<StartFileDto>> GetStartFilesAsync(Guid gameId, CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Get, $"/api/games/{gameId}/playthroughs/start-files", null,
+                o => { var list = new List<StartFileDto>(); foreach (var f in Json.AsObjectArray(o)) list.Add(StartFileDto.FromJson(f)); return list; },
+                ct).ConfigureAwait(false);
+        }
+
+        /// <summary>The agent's activity feed lines newer than <paramref name="sinceUtc"/>, oldest first: the steps of a switch while it runs.</summary>
+        public async Task<List<string>> GetActivitySinceAsync(DateTime sinceUtc, CancellationToken ct = default(CancellationToken))
+        {
+            return await SendAsync(HttpMethod.Get, "/api/activity", null, o =>
+            {
+                var lines = new List<string>();
+                var root = Json.AsObject(o);
+                object recent;
+                if (root != null && root.TryGetValue("recent", out recent) && recent != null)
+                    foreach (var e in Json.AsObjectArray(recent))
+                    {
+                        var at = Json.GetNullableDateTime(e, "timestampUtc");
+                        if (at.HasValue && at.Value.ToUniversalTime() >= sinceUtc) lines.Add(Json.GetString(e, "message"));
+                    }
+                return lines;
+            }, ct).ConfigureAwait(false);
+        }
+
         // tasks/playnite-plugin/plan.md, Phase 14 — "is a newer version of me waiting on the server."
         // Touches the network on the far side (Agent.PlaynitePlugin.CheckAsync), so it gets a longer
         // timeout than the ordinary local-only calls above; still bounded, since this only ever runs
